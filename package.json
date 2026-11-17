@@ -1,6 +1,6 @@
 {
   "name": "claude-for-zen",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "Unofficial: Claude Code as a browser assistant in Zen Browser / Firefox (add-on, MCP server and chat panel)",
   "type": "module",
   "private": true,

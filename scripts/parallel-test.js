@@ -47,7 +47,7 @@ function solidPng(width, height, [r, g, b]) {
 }
 const home = mkdtempSync(path.join(os.tmpdir(), 'claude-for-zen-test-'));
 const chat = spawn(process.execPath, [path.join(root, 'chat/server.js')], {
-  env: { ...process.env, CLAUDE_FOR_ZEN_CHAT_PORT: String(PORT), CLAUDE_FOR_ZEN_HOME: home, CLAUDE_FOR_ZEN_DEV_ONLY: '1', CLAUDE_FOR_ZEN_MODEL: 'haiku' },
+  env: { ...process.env, CLAUDE_FOR_ZEN_CHAT_PORT: String(PORT), CLAUDE_FOR_ZEN_HOME: home, CLAUDE_FOR_ZEN_DEV_ONLY: '1', CLAUDE_FOR_ZEN_MODEL: 'haiku', CLAUDE_FOR_ZEN_VM_PORT: '47826' },
   stdio: ['ignore', 'inherit', 'inherit'],
 });
 
@@ -192,6 +192,24 @@ try {
   check('refusing opens nothing', ![...b.items.values()].some((i) => i.type === 'tool' && i.name === 'mcp__history__open_plain_browser' && i.state === 'done'), [...b.items.values()].slice(-3));
 
   // A permission question in one window is announced in the others.
+  // When the browser starts (the add-on connects) and userscripts are on, the add-on is asked
+  // to open Violentmonkey's connect page, so the user only has to press Approve.
+  await b.tell({ type: 'settings', scripts: true });
+  const addon = new WebSocket(`ws://127.0.0.1:${PORT}/ext`, { origin: 'moz-extension://11111111-2222-3333-4444-555555555555' });
+  const asked = new Promise((resolve) => {
+    addon.on('message', (data) => {
+      const msg = JSON.parse(data.toString());
+      if (msg.type === 'approve_userscripts') resolve(msg.url);
+    });
+    setTimeout(() => resolve(null), 20000);
+  });
+  await new Promise((resolve, reject) => (addon.on('open', resolve), addon.on('error', reject)));
+  addon.send(JSON.stringify({ type: 'control', version: 'test' }));
+  const connectUrl = await asked;
+  check('at browser start the add-on is asked to open the Violentmonkey connect page', String(connectUrl).startsWith('https://violentmonkey.github.io/mcp_connect.html?port=47826&token='), connectUrl);
+  addon.close();
+  await b.tell({ type: 'settings', scripts: false });
+
   // Slash commands: the list comes from Claude Code, and a command's answer shows in the chat.
   check('the panel is told which slash commands exist', Array.isArray(b.commands) && b.commands.includes('context') && !b.commands.includes('clear') && !b.commands.includes('model'), b.commands);
   await c.tell({ type: 'reset' });

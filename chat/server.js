@@ -19,6 +19,7 @@ import { Conversation, THEMES, knownCommands } from './conversation.js';
 import { ask, extractHtml, EXPLAIN_MODES } from './explain.js';
 import { asDocument, createCardStore, sendCard } from '../server/cards.js';
 import { addonAllowed } from '../server/pin.js';
+import { userscriptStatus } from './userscripts.js';
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.CLAUDE_FOR_ZEN_CHAT_PORT) || 47810;
@@ -265,6 +266,18 @@ function pictures(list) {
 
 const clipText = (value, n) => (String(value ?? '').length > n ? String(value).slice(0, n - 1) + '…' : String(value ?? ''));
 
+// The browser has just started (or this server has): if userscripts are switched on and
+// Violentmonkey is not connected, have the add-on open Violentmonkey's connect page, where
+// the user presses Approve. Once per browser start, and never again if they leave it.
+let lastOffer = 0;
+async function offerUserscriptApproval(socket) {
+  if (!seats[0].settings.scripts || Date.now() - lastOffer < 60_000) return;
+  lastOffer = Date.now();
+  const status = await userscriptStatus(path.dirname(seats[0].settingsFile));
+  if (!status || status.connected || !status.connectUrl) return;
+  if (socket.readyState === socket.OPEN) socket.send(JSON.stringify({ type: 'approve_userscripts', url: status.connectUrl }));
+}
+
 // Every other add-on connection serves one Explain card or one comment.
 extWss.on('connection', (socket) => {
   const send = (event) => socket.readyState === socket.OPEN && socket.send(JSON.stringify(event));
@@ -284,6 +297,7 @@ extWss.on('connection', (socket) => {
     if (!msg || typeof msg !== 'object') return;
     if (msg.type === 'control') {
       controls.add(socket);
+      offerUserscriptApproval(socket);
       return;
     }
     if (msg.type === 'where') {

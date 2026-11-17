@@ -664,6 +664,13 @@ async function keepControl() {
     } catch {
       return;
     }
+    if (msg.type === 'approve_userscripts') {
+      // Only Violentmonkey's own connect address; Violentmonkey takes it from there and shows its Approve button.
+      if (typeof msg.url === 'string' && /^https:\/\/violentmonkey\.github\.io\/mcp_connect[./?]/.test(msg.url)) {
+        browser.tabs.create({ url: msg.url, active: true }).catch(() => {});
+      }
+      return;
+    }
     if (msg.type === 'attention') {
       waiting = Number(msg.waiting) || 0;
       updateBadge();

@@ -215,3 +215,37 @@ export function isApprovedScriptUpdate(home, tool, input = {}) {
   const scope = scriptScope(input.code);
   return !!scope && readApprovals(home)[String(input.id)] === scope;
 }
+
+// ------------------------------------------------------------- reconnecting
+//
+// Violentmonkey forgets its approval every time the browser starts. It will not
+// reconnect without a click on Approve (that is its safeguard, and it is left
+// alone), but the page with that button can be put in front of the user when
+// the browser starts, instead of waiting until Claude needs a script.
+
+/** { connected, connectUrl } from the Violentmonkey server, or null if it cannot be reached. */
+export async function userscriptStatus(home) {
+  const entry = userscriptServer(home);
+  const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+  const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
+  const client = new Client({ name: 'claude-for-zen-chat', version: '1' });
+  try {
+    // The server was perhaps started a moment ago: give it a few tries to come up.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await client.connect(new StreamableHTTPClientTransport(new URL(entry.url), { requestInit: { headers: entry.headers } }));
+        break;
+      } catch (err) {
+        if (attempt >= 5) throw err;
+        await new Promise((resolve) => setTimeout(resolve, 600));
+      }
+    }
+    const result = await client.callTool({ name: 'vm_status', arguments: {} });
+    const data = result.structuredContent ?? JSON.parse(result.content?.find((part) => part.type === 'text')?.text ?? '{}');
+    return { connected: data.connected === true, connectUrl: typeof data.connectUrl === 'string' ? data.connectUrl : null };
+  } catch {
+    return null;
+  } finally {
+    client.close().catch(() => {});
+  }
+}
