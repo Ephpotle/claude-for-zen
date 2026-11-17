@@ -231,6 +231,9 @@ header button[aria-expanded='true'] {
 #scripts-row {
   margin-top: 10px;
 }
+#access-all-row {
+  margin: 2px 0 0 21px;
+}
 #script-updates-row {
   margin: 8px 0 0 21px;
 }

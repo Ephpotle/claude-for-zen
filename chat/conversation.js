@@ -271,6 +271,9 @@ export function claudeCommand() {
   return existsSync(local) ? local : 'claude';
 }
 
+/** The settings as kept on disk and shared between conversations. */
+const shared = (settings) => ({ ...settings, access: settings.accessForAll ? settings.access : 'browser' });
+
 export class Conversation {
   constructor({ workDir, mcpServerPath, model, resume = true }) {
     this.workDir = workDir;
@@ -287,10 +290,14 @@ export class Conversation {
     this.scriptCode = new Map(); // tool use id -> userscript code being saved, until its result arrives
 
     this.settingsFile = path.join(workDir, '..', 'settings.json');
-    this.settings = { access: 'browser', folder: '', spaces: false, scripts: false, scriptUpdates: false, model: '', effort: '' };
+    this.settings = { access: 'browser', folder: '', spaces: false, accessForAll: false, scripts: false, scriptUpdates: false, model: '', effort: '' };
     try {
       const saved = JSON.parse(readFileSync(this.settingsFile, 'utf8'));
-      if (ACCESS_MODES.includes(saved.access)) this.settings.access = saved.access;
+      // The access level belongs to one conversation unless the user chose it for all of them.
+      if (saved.accessForAll === true) {
+        this.settings.accessForAll = true;
+        if (ACCESS_MODES.includes(saved.access)) this.settings.access = saved.access;
+      }
       if (typeof saved.folder === 'string') this.settings.folder = saved.folder;
       if (saved.spaces === true && existsSync(SPACES_ENTRY)) this.settings.spaces = true;
       if (saved.scripts === true && userscriptsAvailable()) this.settings.scripts = true;
@@ -352,6 +359,7 @@ export class Conversation {
           updatedAt: this.updatedAt || Date.now(),
           sessionId: this.sessionId,
           nextId: this.nextId,
+          access: this.settings.access,
           history: this.history,
         }),
       );
@@ -373,6 +381,12 @@ export class Conversation {
     this.sessionId = saved.sessionId || null;
     this.nextId = saved.nextId || this.history.length + 1;
     this.updatedAt = saved.updatedAt;
+    // A conversation comes back with the access it had, except that "without asking"
+    // has to be chosen again: it is too much to switch on by reopening something.
+    if (!this.settings.accessForAll) {
+      const had = ACCESS_MODES.includes(saved.access) ? saved.access : 'browser';
+      this.settings = { ...this.settings, access: had === 'full' ? 'ask' : had };
+    }
     // Whatever was in flight when it was last open did not finish.
     for (const item of this.history) {
       if (item.type === 'tool' && item.state === 'running') item.state = 'stopped';
@@ -490,7 +504,9 @@ export class Conversation {
    * task that is running here finishes on the old ones rather than being stopped.
    */
   adopt(settings) {
-    this.settings = { ...settings };
+    // Everything is shared except the access level, which stays this conversation's own
+    // unless the user set it for all of them.
+    this.settings = { ...settings, access: settings.accessForAll ? settings.access : this.settings.access };
     for (const fn of this.subscribers) fn({ type: 'settings', settings: this.settings });
     if (this.busy) this.restartWhenIdle = true;
     else this.kill();
@@ -510,13 +526,19 @@ export class Conversation {
     this.history = [];
     this.asks.clear();
     this.currentText = null;
+    // A new conversation starts with the browser only, unless access was set for all.
+    if (!this.settings.accessForAll && this.settings.access !== 'browser') {
+      this.settings = { ...this.settings, access: 'browser' };
+      for (const fn of this.subscribers) fn({ type: 'settings', settings: this.settings });
+    }
     this.emit({ type: 'reset', id: this.id });
     this.setBusy(false);
   }
 
   /** Change what Claude may touch. Takes effect from the next message. */
-  configure({ access, folder, spaces, model, effort, scripts, scriptUpdates }) {
+  configure({ access, accessForAll, folder, spaces, model, effort, scripts, scriptUpdates }) {
     const next = { ...this.settings };
+    if (typeof accessForAll === 'boolean') next.accessForAll = accessForAll;
     if (typeof scriptUpdates === 'boolean') next.scriptUpdates = scriptUpdates;
     if (typeof scripts === 'boolean') next.scripts = scripts && userscriptsAvailable();
     if (MODELS.includes(model)) next.model = model;
@@ -544,12 +566,12 @@ export class Conversation {
       }
       next.folder = folder;
     }
-    const changed = next.access !== this.settings.access || next.folder !== this.settings.folder || next.spaces !== this.settings.spaces || next.scripts !== this.settings.scripts || next.scriptUpdates !== this.settings.scriptUpdates || next.model !== this.settings.model || next.effort !== this.settings.effort;
+    const changed = next.access !== this.settings.access || next.accessForAll !== this.settings.accessForAll || next.folder !== this.settings.folder || next.spaces !== this.settings.spaces || next.scripts !== this.settings.scripts || next.scriptUpdates !== this.settings.scriptUpdates || next.model !== this.settings.model || next.effort !== this.settings.effort;
     this.settings = next;
     this.emit({ type: 'settings', settings: next });
     if (!changed) return;
     try {
-      writeFileSync(this.settingsFile, JSON.stringify(next, null, 2));
+      writeFileSync(this.settingsFile, JSON.stringify(shared(next), null, 2));
     } catch {}
     // The running process was started with the old settings. A task in progress
     // finishes on them; the new ones apply from the next message.
@@ -693,7 +715,7 @@ export class Conversation {
         this.settings = { ...this.settings, defaultModel: msg.model };
         this.emit({ type: 'settings', settings: this.settings });
         try {
-          writeFileSync(this.settingsFile, JSON.stringify(this.settings, null, 2));
+          writeFileSync(this.settingsFile, JSON.stringify(shared(this.settings), null, 2));
         } catch {}
       }
       this.saveSoon();

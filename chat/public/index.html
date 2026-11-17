@@ -30,10 +30,11 @@
 
     <form id="settings" hidden>
       <fieldset>
-        <legend>What Claude can use</legend>
+        <legend>What Claude can use in this conversation</legend>
         <label><input type="radio" name="access" value="browser" /> <span><b>Browser only</b> Pages and tabs in Zen. Nothing on your computer.</span></label>
         <label><input type="radio" name="access" value="ask" /> <span><b>Browser and computer, asking first</b> Files and commands too. Commands and file changes wait for your OK here.</span></label>
         <label><input type="radio" name="access" value="full" /> <span><b>Browser and computer, without asking</b> Runs commands and changes files straight away. A web page that tricks Claude could then reach your files.</span></label>
+        <label id="access-all-row"><input id="access-all" type="checkbox" /> <span><b>Use this in every conversation</b> Otherwise the choice above is for this conversation only, and a new chat starts with the browser only.</span></label>
       </fieldset>
       <label id="spaces-row"><input id="spaces" type="checkbox" /> <span><b>Zen itself: Spaces, tabs and uBlock</b> List, create and reorganise Spaces, folders and tabs, and tune uBlock Origin for the site you are on. Looking is free; every change waits for your OK here. Needs Zen started with the "Zen (Claude control)" shortcut.</span></label>
       <label id="scripts-row"><input id="scripts" type="checkbox" /> <span><b>Violentmonkey userscripts</b> Make a change to a page permanent by saving it as a userscript, and manage the ones you have. Saving, switching and removing always wait for your OK here. Needs Violentmonkey 2.50 or newer.</span></label>

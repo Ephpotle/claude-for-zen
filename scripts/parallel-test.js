@@ -142,7 +142,15 @@ try {
   check('refusing opens nothing', ![...b.items.values()].some((i) => i.type === 'tool' && i.name === 'mcp__history__open_plain_browser' && i.state === 'done'), [...b.items.values()].slice(-3));
 
   // A permission question in one window is announced in the others.
+  // An access level belongs to one conversation, unless it is set for all of them.
   await b.tell({ type: 'settings', access: 'ask', folder: home });
+  check('an access level is for one conversation only', b.settings?.access === 'ask' && a3.settings?.access === 'browser' && c.settings?.access === 'browser', [b.settings, a3.settings, c.settings]);
+  await b.tell({ type: 'reset' });
+  check('a new chat starts with the browser only', b.settings?.access === 'browser', b.settings);
+  await b.tell({ type: 'settings', access: 'ask', accessForAll: true });
+  check('"use this in every conversation" applies it to the others', a3.settings?.access === 'ask' && c.settings?.access === 'ask' && a3.settings?.accessForAll === true, [a3.settings, c.settings]);
+  await b.tell({ type: 'reset' });
+  check('and then a new chat keeps it', b.settings?.access === 'ask', b.settings);
   b.notice = null;
   a3.ws.send(JSON.stringify({ type: 'send', text: 'Create a file called hello.txt containing the word hi in the working folder. Use the Write tool.' }));
   let question = null;

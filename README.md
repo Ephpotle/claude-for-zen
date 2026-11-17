@@ -61,11 +61,11 @@ There are two ways to open the panel. The simplest needs no configuration: press
 2. In `about:config`, set `browser.ml.chat.provider` to `http://127.0.0.1:47810/`.
 3. Open the sidebar with Ctrl+Alt+X.
 
-A conversation continues until you press **New chat**, and is saved (see *History* below). Nothing appears on claude.ai; transcripts are ordinary Claude Code sessions under `~/.claude-for-zen/chat`. Claude is told to treat page text as untrusted and to ask before purchases, sending messages, deleting, or final form submissions. The page and its WebSocket only accept requests from the panel's own origin with a per-run token, so other websites cannot drive it.
+A conversation continues until you press **New chat**, and is saved (see *History* below). Nothing appears on claude.ai; transcripts are ordinary Claude Code sessions under `~/.claude-for-zen/chat`. Claude is told to treat page text as untrusted and to ask before purchases, sending messages, deleting, or final form submissions. The page and its WebSocket only accept requests from the panel's own origin with a per-run token (see *Security*).
 
 **Optional: hide Zen's own bars.** In Zen's AI chat sidebar, Zen draws its own header, provider menu and "Summarize page" bar around the panel. The two style sheets in `extras/zen-sidebar-tidy/` collapse them to a thin strip that slides back when you point at the top edge. This is cosmetic and nothing needs it; set the provider (step 2) first, since the provider menu is one of the things it tucks away. To use it, copy both files into the `chrome` folder of your Zen profile (create the folder if needed; `about:support` shows the profile folder), set `toolkit.legacyUserProfileCustomizations.stylesheets` to `true` in `about:config`, and restart Zen. Delete the two files to undo it.
 
-**Access** (the button in the panel header) sets what Claude may use; it is saved in `~/.claude-for-zen/settings.json` and applies from the next message:
+**Access** (the button in the panel header) sets what Claude may use. It applies from the next message and **belongs to the conversation you set it in**: a new chat starts with the browser only, and other windows' conversations are not affected. Tick *Use this in every conversation* to make it the default everywhere instead. A reopened conversation gets back the level it had, except that "without asking" has to be chosen again.
 
 - *Browser only* (default): pages and tabs, nothing on the computer.
 - *Browser and computer, asking first*: adds shell commands and file tools. Whatever Claude Code would normally ask permission for (file changes, most commands) appears in the panel with **Allow** / **Don't allow**. Read-only commands and reads inside the working folder run without asking.
@@ -127,10 +127,36 @@ Explain, comments and the sidebar need the chat server running. Everything on th
 - **Containers.** A tab Claude opens uses the same container as the page you are on, so it shares that page's logins (this is why the add-on asks for the cookies permission).
 - **Top frame only.** Content inside iframes is not outlined or clickable.
 - **Console and network capture start when Claude first uses a tab.** Reload to capture a page's startup.
-- **Strict CSP pages:** `javascript` falls back to an isolated world there — the DOM works, the page's own variables don't. The result says when this happened.
+- **Strict CSP pages:** `javascript` is not available on pages whose security policy forbids eval (GitHub, for one). Reading, finding, clicking and typing still work there. The code is deliberately not run in the add-on's own context as a fallback, because there it would have the add-on's powers.
 - **Restricted pages** (`about:`, the add-ons site, reader view) can't be touched by any extension.
 - **Claude can act on any open tab**, including ones you opened, in whatever profile the extension is installed in. Sessions you are logged into are available to it.
-- **Local trust.** The server accepts WebSocket connections only from extension origins, so websites can't reach it; other programs on your machine could.
+- **Local trust.** Websites cannot reach the local servers: they accept the chat panel's own page and the add-on only, and of the installed add-ons only the first one seen (kept in `~/.claude-for-zen/addon-origins.txt`; delete that file after reinstalling the add-on or to use another profile). Other *programs* on your computer are a different matter: one that listens on a port in 47800–47809 before a real session does is treated by the add-on as a session and can drive the browser, and anything running as you can read the files in `~/.claude-for-zen`.
+
+## Security
+
+The design question is what a Claude that has been misled by a web page can do without you. Text on a page, a tab title or a userscript can be written to steer it, so assume it will try things you did not ask for.
+
+What is enforced in code, not just asked of Claude:
+
+- **Claude cannot touch Claude for Zen's own pages.** The add-on refuses every tool on the chat panel, the local servers and its own pages, so Claude cannot change its access level, type into the panel as you, or press Allow on its own requests.
+- **Websites cannot talk to Claude as you.** A link to the panel with a prompt attached only fills the message box. The panel's token never leaves its page.
+- **Cards and drawings run sealed.** Generated HTML gets an opaque origin, no network and none of the add-on's powers, and the card page refuses to run if a website frames it without that seal.
+- **Changes that persist ask first:** userscripts, uBlock rules and filters, moving or closing tabs, opening a plain browser window. For userscripts the prompt says where the script runs (in capitals if that is everywhere), what it loads and whether it replaces itself later.
+
+What is by design and you should know:
+
+- **In every Access mode, Claude can read and act on any open tab without asking**, including running script in it. "Browser only" means "nothing on the computer", not "asks before acting in the browser". The panel asks Claude to check with you before purchases, messages and deletions, but that is an instruction, which a misleading page can talk it out of.
+- **With computer access, the Allow prompts are the only barrier, and they show the command or the file path, not what a file will contain.** "Without asking" has no barrier: a misled Claude then has your shell, and with that it can also get round the prompts for userscripts and uBlock.
+- **Saved conversations hold what Claude did**, including scripts it ran and commands, under `~/.claude-for-zen/chat/conversations`. Text typed into pages and the Violentmonkey token are left out. A later conversation can read earlier ones.
+
+Known gaps, found by an independent review in November 2026 and not fixed yet:
+
+- A page can read what you type into a comment pin's box, and may be able to add text to it as you send it. Avoid pinning comments on pages you do not trust.
+- A page can tell that the add-on is installed and that Claude is using the tab.
+- The Violentmonkey token is handed to Claude as part of the connect address (that is how Violentmonkey's own server works), so with computer access Claude could use it directly.
+- Write and Edit prompts show only the path.
+
+Reports of security problems are welcome as GitHub issues, or privately through the repository's security advisories.
 
 ## Development
 

@@ -196,6 +196,7 @@ function modelName(id) {
 
 function showSettings(settings, trouble) {
   settingsForm.elements.access.value = settings.access;
+  document.getElementById('access-all').checked = !!settings.accessForAll;
   document.getElementById('spaces').checked = !!settings.spaces;
   document.getElementById('scripts').checked = !!settings.scripts;
   document.getElementById('script-updates').checked = !!settings.scriptUpdates;
@@ -213,7 +214,7 @@ function showSettings(settings, trouble) {
 
 function saveSettings() {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
-  socket.send(JSON.stringify({ type: 'settings', access: settingsForm.elements.access.value, folder: folder.value, spaces: document.getElementById('spaces').checked, scripts: document.getElementById('scripts').checked, scriptUpdates: document.getElementById('script-updates').checked, model: document.getElementById('model').value, effort: document.getElementById('effort').value }));
+  socket.send(JSON.stringify({ type: 'settings', access: settingsForm.elements.access.value, accessForAll: document.getElementById('access-all').checked, folder: folder.value, spaces: document.getElementById('spaces').checked, scripts: document.getElementById('scripts').checked, scriptUpdates: document.getElementById('script-updates').checked, model: document.getElementById('model').value, effort: document.getElementById('effort').value }));
 }
 
 settingsToggle.addEventListener('click', () => {
