@@ -60,7 +60,7 @@ const check = (name, ok, detail = '') => {
 /** One panel, as the page in a window's sidebar would be. */
 async function panel(token, seat = '') {
   const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?token=${token}&seat=${seat}`, { origin: base });
-  const p = { ws, items: new Map(), busy: false, id: null, settings: null, list: null, notice: null, sawBusy: false, idle: null };
+  const p = { ws, items: new Map(), busy: false, id: null, settings: null, list: null, notice: null, sawBusy: false, idle: null, status: null, phases: new Set() };
   ws.on('message', (data) => {
     const e = JSON.parse(data.toString());
     if (e.id && e.type !== 'delta' && e.type !== 'update') p.id = e.id;
@@ -74,6 +74,10 @@ async function panel(token, seat = '') {
     if (e.type === 'delta') p.items.get(e.id).text += e.text;
     if (e.type === 'update') Object.assign(p.items.get(e.id) ?? {}, e.patch);
     if (e.type === 'settings') p.settings = e.settings;
+    if (e.status) {
+      p.status = e.status;
+      p.phases.add(e.status.phase);
+    }
     if (e.type === 'conversations') p.list = e.list;
     if (e.type === 'notice') p.notice = e.text;
     if (e.type === 'busy') {
@@ -113,6 +117,9 @@ try {
   clearInterval(watch);
   check('both were working at the same time', bothBusy);
   check('each panel got its own answer', /APPLE/.test(a.text()) && !/PEAR/.test(a.text()) && /PEAR/.test(b.text()) && !/APPLE/.test(b.text()), [a.text().slice(-80), b.text().slice(-80)]);
+
+  // The status line: what Claude is doing while it works, and a summary when it is done.
+  check('the status follows the turn and ends with a summary', a.phases.has('starting') && a.phases.has('writing') && a.status?.phase === 'done' && a.status.tokens > 20 && a.status.ended > a.status.since, [[...a.phases], a.status]);
 
   // A reload of window A's panel comes back to A's conversation, not B's.
   a.ws.close();

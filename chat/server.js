@@ -338,7 +338,7 @@ wss.on('connection', (socket, req) => {
     seat.panels++;
     seat.touched = Date.now();
     // Bring a reopened panel back to where the conversation stands.
-    send({ type: 'history', events: seat.history, busy: seat.busy, settings: seat.settings, id: seat.id });
+    send({ type: 'history', events: seat.history, busy: seat.busy, settings: seat.settings, status: { ...seat.status, now: Date.now() }, id: seat.id });
     unsubscribe = seat.subscribe(send);
   };
   const elsewhere = (id) => seats.find((seat) => seat !== conversation && seat.id === id);

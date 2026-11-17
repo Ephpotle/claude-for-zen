@@ -289,6 +289,9 @@ export class Conversation {
     this.currentText = null; // text item being streamed
     this.idleTimer = null;
     this.asks = new Map(); // item id -> { item, requestId, input }
+    // What Claude is doing right now, for the panel's status line. Not part of the saved history.
+    this.status = { phase: 'idle' };
+    this.statusTimer = null;
     this.scriptCode = new Map(); // tool use id -> userscript code being saved, until its result arrives
 
     this.settingsFile = path.join(workDir, '..', 'settings.json');
@@ -438,7 +441,7 @@ export class Conversation {
 
   /** Tell every open panel to redraw from scratch. */
   broadcastWhole() {
-    for (const fn of this.subscribers) fn({ type: 'history', events: this.history, busy: this.busy, settings: this.settings, id: this.id });
+    for (const fn of this.subscribers) fn({ type: 'history', events: this.history, busy: this.busy, settings: this.settings, status: { ...this.status, now: Date.now() }, id: this.id });
   }
 
   add(item) {
@@ -471,6 +474,8 @@ export class Conversation {
     const previews = images.map((image) => image.preview).filter(Boolean);
     this.add({ type: 'user', text: shown, ...(images.length ? { pictures: images.length, previews } : {}) });
     this.setBusy(true);
+    this.status = { phase: 'starting', since: Date.now(), phaseSince: Date.now(), lastNews: Date.now(), tokens: 0, limit: this.status.limit };
+    this.sendStatus();
     this.currentText = null;
     try {
       this.ensureProcess();
@@ -502,6 +507,7 @@ export class Conversation {
     if (!this.busy) return;
     this.kill();
     this.settle('stopped');
+    this.setStatus({ phase: 'stopped', ended: Date.now(), detail: '' });
     this.add({ type: 'note', text: 'Stopped.' });
     this.setBusy(false);
   }
@@ -605,6 +611,7 @@ export class Conversation {
     if (allow) rememberScriptApproval(path.dirname(this.settingsFile), ask.tool, ask.input);
     this.respond(ask.requestId, ask.input, allow);
     this.update(ask.item, { state: allow ? 'allowed' : 'denied' });
+    if (this.busy && !this.asks.size) this.setStatus({ phase: allow ? 'tool' : 'waiting', detail: allow ? this.status.detail : '' });
   }
 
   respond(requestId, input, allow) {
@@ -631,6 +638,7 @@ export class Conversation {
 
   fail(text) {
     this.settle('failed');
+    this.setStatus({ phase: 'failed', ended: Date.now(), detail: '' });
     this.add({ type: 'error', text });
     this.setBusy(false);
   }
@@ -724,7 +732,75 @@ export class Conversation {
   }
 
   /** One line of Claude Code's stream-json output. */
+  /**
+   * The status line: what Claude is doing, since when, and how much it has
+   * produced. `patch` changes it; a change of phase goes out at once, the rest
+   * at most twice a second.
+   */
+  setStatus(patch) {
+    const phaseChanged = patch.phase !== undefined && patch.phase !== this.status.phase;
+    this.status = { ...this.status, ...patch, ...(phaseChanged ? { phaseSince: Date.now() } : {}) };
+    if (phaseChanged || patch.detail !== undefined) return this.sendStatus();
+    if (!this.statusTimer) this.statusTimer = setTimeout(() => this.sendStatus(), 500);
+  }
+
+  sendStatus() {
+    clearTimeout(this.statusTimer);
+    this.statusTimer = null;
+    const event = { type: 'status', status: { ...this.status, now: Date.now() } };
+    for (const fn of this.subscribers) fn(event); // not emit(): this is not worth saving
+  }
+
+  /** Tokens written so far this turn: finished model calls plus the one in progress. */
+  countTokens(current) {
+    this.setStatus({ tokens: (this.status.tokensDone || 0) + current });
+  }
+
+  /** Follow the stream for the status line. Returns nothing; never throws. */
+  track(msg) {
+    // A plugin's own status ticks say nothing about whether Claude is alive.
+    if (msg.type === 'system' && msg.subtype === 'ui_status') return;
+    if (!this.busy) return;
+    this.status.lastNews = Date.now();
+    if (msg.type === 'system') {
+      if (msg.subtype === 'status' && msg.status === 'requesting' && !msg.parent_tool_use_id) this.setStatus({ phase: 'waiting', detail: '' });
+      else if (msg.subtype === 'thinking_tokens') this.setStatus({ thinkingTokens: msg.estimated_tokens || 0 });
+      else if (msg.subtype === 'task_started' && msg.task_type === 'local_agent') this.setStatus({ phase: 'helper', detail: short(msg.description || 'a sub-task', 60), helperTokens: 0 });
+      else if (msg.subtype === 'task_progress') this.setStatus({ phase: 'helper', detail: short(msg.description || this.status.detail || '', 60), helperTokens: msg.usage?.total_tokens || 0 });
+      else if (msg.subtype === 'compact_boundary') this.setStatus({ phase: 'tidying', detail: '' });
+      else if (msg.subtype === 'api_retry') this.setStatus({ phase: 'retrying', detail: `attempt ${msg.attempt || '?'}` });
+      return;
+    }
+    if (msg.type === 'rate_limit_event') {
+      const info = msg.rate_limit_info || {};
+      const used = info.unifiedWindows?.[info.rateLimitType]?.utilization;
+      if (typeof used === 'number') this.setStatus({ limit: { used, resetsAt: info.resetsAt, kind: info.rateLimitType } });
+      return;
+    }
+    if (msg.parent_tool_use_id) return;
+    if (msg.type === 'stream_event') {
+      const event = msg.event;
+      if (event.type === 'content_block_start') {
+        const kind = event.content_block?.type;
+        if (kind === 'thinking') this.setStatus({ phase: 'thinking', detail: '' });
+        else if (kind === 'text') this.setStatus({ phase: 'writing', detail: '' });
+        else if (kind === 'tool_use') this.setStatus({ phase: 'preparing', detail: '' });
+      } else if (event.type === 'message_delta' && event.usage) {
+        this.status.tokensNow = event.usage.output_tokens || 0;
+        this.countTokens(this.status.tokensNow);
+      } else if (event.type === 'message_stop') {
+        this.status.tokensDone = (this.status.tokensDone || 0) + (this.status.tokensNow || 0);
+        this.status.tokensNow = 0;
+      } else {
+        this.setStatus({}); // a delta: just keeps "last news" fresh
+      }
+    }
+  }
+
   handle(msg) {
+    try {
+      this.track(msg);
+    } catch {}
     if (msg.type === 'system' && msg.subtype === 'init') {
       this.sessionId = msg.session_id;
       // Remember what "Default" turns out to be, so the panel can name it.
@@ -753,6 +829,7 @@ export class Conversation {
         this.currentText = null;
         const item = this.add({ type: 'ask', state: 'waiting', ...describeRequest(request.tool_name, request.input) });
         this.asks.set(item.id, { item, requestId: msg.request_id, input: request.input, tool: request.tool_name });
+        this.setStatus({ phase: 'asking', detail: '' });
       }
       return;
     }
@@ -783,6 +860,7 @@ export class Conversation {
           continue;
         }
         this.add({ type: 'tool', toolUseId: block.id, name: block.name, label: describeCall(block.name, block.input), state: 'running', ...(keep && keep !== '{}' ? { input: keep } : {}) });
+        this.setStatus({ phase: 'tool', detail: describeCall(block.name, block.input) });
       }
       return;
     }
@@ -803,6 +881,14 @@ export class Conversation {
       return;
     }
     if (msg.type === 'result') {
+      this.setStatus({
+        phase: 'done',
+        ended: Date.now(),
+        detail: '',
+        tokens: msg.usage?.output_tokens ?? this.status.tokens,
+        thinkingTokens: msg.usage?.output_tokens_details?.thinking_tokens ?? this.status.thinkingTokens,
+        turns: msg.num_turns,
+      });
       this.currentText = null;
       this.settle('stopped');
       if (msg.is_error) this.add({ type: 'error', text: short(msg.result || `Claude Code reported an error (${msg.subtype}).`, 500) });

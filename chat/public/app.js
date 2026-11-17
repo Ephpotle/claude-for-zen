@@ -24,17 +24,65 @@ function keepInView(wasNear) {
   if (wasNear) log.scrollTop = log.scrollHeight;
 }
 
-function setThinking(on) {
-  if (on && !thinking) {
-    thinking = document.createElement('div');
-    thinking.className = 'thinking';
-    thinking.textContent = 'Working…';
-    log.append(thinking);
-  } else if (!on && thinking) {
-    thinking.remove();
-    thinking = null;
+function setThinking() {} // replaced by the status line below
+
+// ------------------------------------------------------------------- status
+
+// One line above the message box that says what Claude is doing, for how long,
+// and how much it has written: enough to tell working from stuck.
+const statusLine = document.getElementById('status');
+const statusText = document.getElementById('status-text');
+const statusMeta = document.getElementById('status-meta');
+let status = { phase: 'idle' };
+let clockSkew = 0; // server clock minus ours; the same machine, but be exact
+const PHASES = {
+  starting: 'Starting',
+  waiting: 'Waiting for Claude',
+  thinking: 'Thinking',
+  writing: 'Writing',
+  preparing: 'Preparing a step',
+  tool: 'Working',
+  helper: 'A helper is working',
+  asking: 'Waiting for your OK',
+  tidying: 'Making room in its memory',
+  retrying: 'Retrying',
+};
+const clock = (ms) => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return s < 3600 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+};
+const amount = (n) => (n >= 10000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+
+function showStatus() {
+  const s = status;
+  const now = Date.now() + clockSkew;
+  const running = !!PHASES[s.phase];
+  if (!running && !['done', 'stopped', 'failed'].includes(s.phase)) {
+    statusLine.hidden = true;
+    return;
   }
+  statusLine.hidden = false;
+  statusLine.className = running ? (s.phase === 'asking' ? 'asking' : 'running') : 'ended';
+  const tokens = (s.tokens || 0) + (s.phase === 'thinking' ? s.thinkingTokens || 0 : 0);
+  const parts = [];
+  if (running) {
+    statusText.textContent = s.phase === 'tool' && s.detail ? s.detail : PHASES[s.phase] + (s.detail ? `: ${s.detail}` : '');
+    parts.push(clock(now - s.since));
+    if (s.phase === 'helper' && s.helperTokens) parts.push(`helper ${amount(s.helperTokens)} tokens`);
+    else if (tokens) parts.push(`${amount(tokens)} tokens`);
+    // Nothing at all from Claude for a while. Normal during a long step; worth knowing either way.
+    const quiet = now - (s.lastNews || now);
+    if (s.phase !== 'asking' && quiet > 20000) parts.push(`quiet for ${clock(quiet)}`);
+    statusLine.classList.toggle('quiet', s.phase !== 'asking' && quiet > 120000);
+  } else {
+    statusText.textContent = { done: 'Done', stopped: 'Stopped', failed: 'Failed' }[s.phase];
+    if (s.since && s.ended) parts.push(`in ${clock(s.ended - s.since)}`);
+    if (s.tokens) parts.push(`${amount(s.tokens)} tokens${s.thinkingTokens ? ` (${amount(s.thinkingTokens)} thinking)` : ''}`);
+    if (s.limit && s.limit.used >= 0.75) parts.push(`${Math.round(s.limit.used * 100)}% of your plan's limit used`);
+  }
+  statusMeta.textContent = parts.join(' · ');
 }
+setInterval(showStatus, 1000);
 
 function toolLine(el, item) {
   el.className = item.state;
@@ -143,6 +191,12 @@ function addItem(item) {
 function onEvent(event) {
   // Only these carry the conversation's id; on other events `id` is an item.
   if ((event.type === 'history' || event.type === 'reset') && event.id) rememberSeat(event.id);
+  if (event.status) {
+    status = event.status;
+    if (event.status.now) clockSkew = event.status.now - Date.now();
+    showStatus();
+    if (event.type === 'status') return;
+  }
   if (event.type === 'history') {
     clearLog();
     event.events.forEach(addItem);
@@ -170,6 +224,8 @@ function onEvent(event) {
   } else if (event.type === 'busy') {
     setBusy(event.busy);
   } else if (event.type === 'reset') {
+    status = { phase: 'idle' };
+    showStatus();
     clearLog();
   } else if (event.type === 'settings') {
     showSettings(event.settings, event.problem);
