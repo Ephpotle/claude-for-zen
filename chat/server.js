@@ -15,7 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { WebSocketServer } from 'ws';
 import { readFileSync } from 'node:fs';
-import { Conversation } from './conversation.js';
+import { Conversation, THEMES } from './conversation.js';
 import { ask, extractHtml, EXPLAIN_MODES } from './explain.js';
 import { asDocument, createCardStore, sendCard } from '../server/cards.js';
 import { addonAllowed } from '../server/pin.js';
@@ -170,7 +170,7 @@ const server = http.createServer(async (req, res) => {
   };
   try {
     if (url.pathname === '/') {
-      const html = (await readFile(path.join(PUBLIC, 'index.html'), 'utf8')).replace('__TOKEN__', token);
+      const html = (await readFile(path.join(PUBLIC, 'index.html'), 'utf8')).replace('__TOKEN__', token).replace('<html lang="en">', `<html lang="en" data-theme="${THEMES.includes(seats[0].settings.theme) ? seats[0].settings.theme : ''}">`);
       res.writeHead(200, { ...headers, 'content-type': 'text/html; charset=utf-8' }).end(html);
     } else if (FILES[url.pathname]) {
       const [file, type] = FILES[url.pathname];

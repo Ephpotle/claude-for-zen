@@ -568,3 +568,355 @@ figure iframe {
   color: var(--ink);
   box-shadow: inset 0 0 0 1px var(--line);
 }
+
+/* The look chooser: one quiet line at the foot of the settings. */
+#looks {
+  margin: 14px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  color: var(--soft);
+  font-size: 12px;
+}
+#looks button {
+  border: 0;
+  background: none;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font: inherit;
+  color: var(--soft);
+  cursor: pointer;
+}
+#looks button:hover {
+  color: var(--ink);
+}
+#looks button[aria-pressed='true'] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ===== Looks =====
+   The default look ("Sage") is everything above. Each look below only overrides it, and applies when
+   the page has data-theme set to its name (chosen under Access, kept in the shared settings). */
+
+/* Iris: soft and rounded. Neutral greys, one violet accent, a floating input. */
+:root[data-theme='iris'] {
+  --ground: #f5f4f8;
+  --surface: #ffffff;
+  --ink: #1d1b26;
+  --soft: #6e6a7c;
+  --line: #e4e1ec;
+  --accent: #5b4bd6;
+  --on-accent: #ffffff;
+  --mine: #5b4bd6;
+  --mine-ink: #ffffff;
+  --danger: #c2410c;
+  --code: #efedf6;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='iris'] {
+    --ground: #17161c;
+    --surface: #211f29;
+    --ink: #ecebf2;
+    --soft: #9a97aa;
+    --line: #302d3b;
+    --accent: #a99cff;
+    --on-accent: #15131f;
+    --mine: #3d3578;
+    --mine-ink: #f1efff;
+    --danger: #f08a5d;
+    --code: #292733;
+  }
+}
+:root[data-theme='iris'] body {
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+:root[data-theme='iris'] header {
+  border-bottom: 0;
+  padding: 12px 16px 4px;
+  gap: 8px;
+}
+:root[data-theme='iris'] h1 {
+  font-size: 14px;
+}
+:root[data-theme='iris'] header button {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--line);
+}
+:root[data-theme='iris'] #comment {
+  background: none;
+  box-shadow: none;
+}
+:root[data-theme='iris'] #log {
+  padding: 14px 16px 10px;
+  gap: 14px;
+}
+:root[data-theme='iris'] .user {
+  background: var(--mine);
+  color: var(--mine-ink);
+  border-radius: 18px 18px 5px 18px;
+  padding: 9px 14px;
+}
+:root[data-theme='iris'] .trail {
+  border-left: 0;
+  margin: 0;
+  padding: 0;
+  gap: 4px;
+}
+:root[data-theme='iris'] .trail li {
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 5px 11px 5px 28px;
+  box-shadow: 0 0 0 1px var(--line);
+}
+:root[data-theme='iris'] .trail li::before {
+  left: 11px;
+  top: 0.82em;
+  box-shadow: none;
+}
+:root[data-theme='iris'] .ask {
+  border: 0;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(30, 20, 80, 0.06), 0 0 0 1px var(--line);
+  padding: 13px 15px;
+}
+:root[data-theme='iris'] .ask.settled {
+  box-shadow: 0 0 0 1px var(--line);
+}
+:root[data-theme='iris'] .ask pre {
+  background: var(--code);
+  border-radius: 10px;
+  padding: 8px 11px;
+}
+:root[data-theme='iris'] .ask button {
+  border-radius: 999px;
+  padding: 6px 17px;
+}
+:root[data-theme='iris'] figure iframe {
+  border: 0;
+  border-radius: 16px;
+  box-shadow: 0 0 0 1px var(--line);
+}
+:root[data-theme='iris'] .text code,
+:root[data-theme='iris'] .text pre {
+  border-radius: 8px;
+}
+:root[data-theme='iris'] .error {
+  border-left: 0;
+  border-radius: 12px;
+  padding: 8px 13px;
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+:root[data-theme='iris'] #composer {
+  border: 0;
+  border-radius: 24px;
+  margin: 8px 12px 12px;
+  padding: 8px 8px 8px 17px;
+  box-shadow: 0 3px 14px rgba(30, 20, 80, 0.09), 0 0 0 1px var(--line);
+}
+:root[data-theme='iris'] #composer:focus-within {
+  box-shadow: 0 3px 14px rgba(30, 20, 80, 0.09), 0 0 0 1.5px var(--accent);
+}
+:root[data-theme='iris'] #action {
+  border-radius: 999px;
+  padding: 6px 16px;
+}
+
+/* Reader: the default green, with Claude's replies set as reading text in a serif. */
+:root[data-theme='reader'] {
+  --ground: #f4f5f1;
+  --surface: #fcfcf9;
+  --ink: #1a201c;
+  --soft: #5d675f;
+  --line: #d6dcd3;
+  --accent: #2b6349;
+  --on-accent: #f8f9f6;
+  --mine: #e2e9e1;
+  --danger: #a8442a;
+  --code: #e7ebe4;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='reader'] {
+    --ground: #131614;
+    --surface: #1a1e1b;
+    --ink: #e6eae4;
+    --soft: #95a097;
+    --line: #2b312c;
+    --accent: #8acba6;
+    --on-accent: #0f130f;
+    --mine: #232b25;
+    --danger: #e08a6c;
+    --code: #222722;
+  }
+}
+:root[data-theme='reader'] body {
+  font-size: 14px;
+}
+:root[data-theme='reader'] header {
+  padding: 11px 16px;
+}
+:root[data-theme='reader'] h1 {
+  font: italic 600 16px/1.2 Charter, 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  letter-spacing: 0;
+}
+:root[data-theme='reader'] #log {
+  padding: 18px 18px 10px;
+  gap: 14px;
+}
+:root[data-theme='reader'] .text {
+  font: 15.5px/1.62 Charter, 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+}
+:root[data-theme='reader'] .text code,
+:root[data-theme='reader'] .text pre {
+  font: 12.5px/1.5 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
+:root[data-theme='reader'] .text strong {
+  font-weight: 700;
+}
+:root[data-theme='reader'] .user {
+  border-radius: 4px 4px 0 4px;
+  padding: 8px 12px;
+  font-weight: 500;
+  box-shadow: inset -2px 0 0 var(--accent);
+}
+:root[data-theme='reader'] .trail {
+  font-size: 12px;
+  gap: 4px;
+  margin-left: 2px;
+}
+:root[data-theme='reader'] .ask {
+  border-radius: 3px;
+  border-left-width: 3px;
+  padding: 11px 13px;
+}
+:root[data-theme='reader'] .ask strong {
+  font: 600 15px/1.35 Charter, 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+}
+:root[data-theme='reader'] .ask button {
+  border-radius: 3px;
+  padding: 5px 14px;
+}
+:root[data-theme='reader'] figcaption {
+  font: italic 13px Charter, 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+}
+:root[data-theme='reader'] figure iframe {
+  border-radius: 3px;
+}
+:root[data-theme='reader'] #composer {
+  border-radius: 6px;
+  margin: 8px 14px 14px;
+}
+:root[data-theme='reader'] #action {
+  border-radius: 4px;
+}
+
+/* Ledger: a transcript rather than a chat. No bubbles, dense, one amber accent. */
+:root[data-theme='ledger'] {
+  --ground: #ffffff;
+  --surface: #f5f6f7;
+  --ink: #0f1720;
+  --soft: #5b6673;
+  --line: #e2e6ea;
+  --accent: #a8530a;
+  --on-accent: #ffffff;
+  --mine: transparent;
+  --danger: #b42318;
+  --code: #f0f2f4;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme='ledger'] {
+    --ground: #0e1116;
+    --surface: #161b22;
+    --ink: #e6edf3;
+    --soft: #8b98a5;
+    --line: #262d36;
+    --accent: #f0a43a;
+    --on-accent: #1a1206;
+    --danger: #ff8a7a;
+    --code: #1b222b;
+  }
+}
+:root[data-theme='ledger'] body {
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+:root[data-theme='ledger'] header {
+  padding: 9px 14px;
+}
+:root[data-theme='ledger'] h1 {
+  font-size: 12.5px;
+  font-weight: 700;
+}
+:root[data-theme='ledger'] #log {
+  padding: 4px 14px 8px;
+  gap: 9px;
+}
+:root[data-theme='ledger'] .user {
+  align-self: stretch;
+  max-width: none;
+  background: none;
+  border-radius: 0;
+  margin-top: 8px;
+  padding: 11px 0 0;
+  border-top: 1px solid var(--line);
+  font-size: 14.5px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+:root[data-theme='ledger'] .user::before {
+  content: 'You asked';
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+:root[data-theme='ledger'] .trail {
+  border-left: 0;
+  margin: 0;
+  padding: 0;
+  gap: 2px;
+  font: 11.5px/1.5 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
+:root[data-theme='ledger'] .trail li {
+  padding-left: 15px;
+}
+:root[data-theme='ledger'] .trail li::before {
+  left: 1px;
+  top: 0.5em;
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  box-shadow: none;
+}
+:root[data-theme='ledger'] .ask {
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--accent);
+  border-radius: 2px;
+  padding: 9px 11px;
+}
+:root[data-theme='ledger'] .ask.settled {
+  border-top-color: var(--line);
+}
+:root[data-theme='ledger'] .ask button {
+  border-radius: 2px;
+}
+:root[data-theme='ledger'] figure iframe {
+  border-radius: 2px;
+}
+:root[data-theme='ledger'] .text code,
+:root[data-theme='ledger'] .text pre {
+  border-radius: 2px;
+}
+:root[data-theme='ledger'] #composer {
+  margin: 0;
+  border-radius: 0;
+  border-width: 1px 0 0;
+  padding: 8px 10px 8px 14px;
+  background: var(--surface);
+}
+:root[data-theme='ledger'] #action {
+  border-radius: 2px;
+}

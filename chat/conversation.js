@@ -29,6 +29,8 @@ export const ACCESS_MODES = ['browser', 'ask', 'full'];
 // '' means: whatever Claude Code would use by default.
 export const MODELS = ['', 'fable', 'opus', 'sonnet', 'haiku'];
 export const EFFORTS = ['', 'low', 'medium', 'high', 'xhigh', 'max'];
+// How the panel looks. '' is the default look; the others are blocks in chat/public/app.css.
+export const THEMES = ['', 'iris', 'reader', 'ledger'];
 const COMPUTER_TOOLS = 'Bash,PowerShell,Read,Edit,Write,Glob,Grep';
 
 const BASE_PROMPT = `You are Claude, running as a chat panel docked beside the web page in the user's Zen browser. You can see and operate the browser through the mcp__zen__* tools.
@@ -305,6 +307,7 @@ export class Conversation {
       if (MODELS.includes(saved.model)) this.settings.model = saved.model;
       if (typeof saved.defaultModel === 'string') this.settings.defaultModel = saved.defaultModel.slice(0, 60);
       if (EFFORTS.includes(saved.effort)) this.settings.effort = saved.effort;
+      if (THEMES.includes(saved.theme)) this.settings.theme = saved.theme;
     } catch {
       // first run
     }
@@ -506,8 +509,10 @@ export class Conversation {
   adopt(settings) {
     // Everything is shared except the access level, which stays this conversation's own
     // unless the user set it for all of them.
+    const sameForClaude = JSON.stringify({ ...settings, theme: '' , access: '' }) === JSON.stringify({ ...this.settings, theme: '', access: '' }) && (!settings.accessForAll || settings.access === this.settings.access);
     this.settings = { ...settings, access: settings.accessForAll ? settings.access : this.settings.access };
     for (const fn of this.subscribers) fn({ type: 'settings', settings: this.settings });
+    if (sameForClaude) return; // only the look changed: nothing to restart
     if (this.busy) this.restartWhenIdle = true;
     else this.kill();
   }
@@ -536,9 +541,10 @@ export class Conversation {
   }
 
   /** Change what Claude may touch. Takes effect from the next message. */
-  configure({ access, accessForAll, folder, spaces, model, effort, scripts, scriptUpdates }) {
+  configure({ access, accessForAll, theme, folder, spaces, model, effort, scripts, scriptUpdates }) {
     const next = { ...this.settings };
     if (typeof accessForAll === 'boolean') next.accessForAll = accessForAll;
+    if (THEMES.includes(theme)) next.theme = theme;
     if (typeof scriptUpdates === 'boolean') next.scriptUpdates = scriptUpdates;
     if (typeof scripts === 'boolean') next.scripts = scripts && userscriptsAvailable();
     if (MODELS.includes(model)) next.model = model;
@@ -567,8 +573,15 @@ export class Conversation {
       next.folder = folder;
     }
     const changed = next.access !== this.settings.access || next.accessForAll !== this.settings.accessForAll || next.folder !== this.settings.folder || next.spaces !== this.settings.spaces || next.scripts !== this.settings.scripts || next.scriptUpdates !== this.settings.scriptUpdates || next.model !== this.settings.model || next.effort !== this.settings.effort;
+    const restyled = next.theme !== this.settings.theme;
     this.settings = next;
     this.emit({ type: 'settings', settings: next });
+    if (restyled && !changed) {
+      try {
+        writeFileSync(this.settingsFile, JSON.stringify(shared(next), null, 2));
+      } catch {}
+      return 'look';
+    }
     if (!changed) return;
     try {
       writeFileSync(this.settingsFile, JSON.stringify(shared(next), null, 2));

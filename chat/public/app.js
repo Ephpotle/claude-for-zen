@@ -194,7 +194,12 @@ function modelName(id) {
   return match[1][0].toUpperCase() + match[1].slice(1) + ' ' + match[2] + (match[3] ? '.' + match[3] : '');
 }
 
+let theme = document.documentElement.dataset.theme || '';
+
 function showSettings(settings, trouble) {
+  theme = settings.theme || '';
+  document.documentElement.dataset.theme = theme;
+  for (const button of document.querySelectorAll('#looks button')) button.setAttribute('aria-pressed', String(button.dataset.theme === theme));
   settingsForm.elements.access.value = settings.access;
   document.getElementById('access-all').checked = !!settings.accessForAll;
   document.getElementById('spaces').checked = !!settings.spaces;
@@ -214,7 +219,7 @@ function showSettings(settings, trouble) {
 
 function saveSettings() {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
-  socket.send(JSON.stringify({ type: 'settings', access: settingsForm.elements.access.value, accessForAll: document.getElementById('access-all').checked, folder: folder.value, spaces: document.getElementById('spaces').checked, scripts: document.getElementById('scripts').checked, scriptUpdates: document.getElementById('script-updates').checked, model: document.getElementById('model').value, effort: document.getElementById('effort').value }));
+  socket.send(JSON.stringify({ type: 'settings', access: settingsForm.elements.access.value, accessForAll: document.getElementById('access-all').checked, theme, folder: folder.value, spaces: document.getElementById('spaces').checked, scripts: document.getElementById('scripts').checked, scriptUpdates: document.getElementById('script-updates').checked, model: document.getElementById('model').value, effort: document.getElementById('effort').value }));
 }
 
 settingsToggle.addEventListener('click', () => {
@@ -222,6 +227,13 @@ settingsToggle.addEventListener('click', () => {
   settingsToggle.setAttribute('aria-expanded', String(!settingsForm.hidden));
 });
 settingsForm.addEventListener('change', saveSettings);
+// The look: applied at once here, saved so that every window follows.
+document.getElementById('looks').addEventListener('click', (event) => {
+  if (event.target.tagName !== 'BUTTON') return;
+  theme = event.target.dataset.theme;
+  document.documentElement.dataset.theme = theme;
+  saveSettings();
+});
 settingsForm.addEventListener('submit', (event) => {
   event.preventDefault();
   saveSettings();

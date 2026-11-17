@@ -79,6 +79,8 @@ The same server tunes **uBlock Origin** for the site in a tab (`ublock_*` tools,
 
 **Violentmonkey userscripts** (a checkbox under Access) is how a change Claude made to a page becomes permanent: Claude saves it as a userscript in [Violentmonkey](https://violentmonkey.github.io/) (2.50 or newer, installed from addons.mozilla.org as usual), and can list, fix, switch off and remove scripts. It uses Violentmonkey's own agent support through the official `@violentmonkey/mcp` server, which the chat server keeps running on 127.0.0.1:47811 (`CLAUDE_FOR_ZEN_VM_PORT`). Once each time Zen starts, Claude opens a connect page and you press **Approve** in Violentmonkey. Saving, switching and removing always ask in the panel, showing the pages the script runs on and its code. It works in a normally started Zen. `npm run test:userscripts` tests it against a throwaway Zen (set `VIOLENTMONKEY_XPI` to a downloaded copy if Violentmonkey is not installed in your profile).
 
+**Look.** A line at the foot of the Access panel switches between four looks: *Sage* (the default), *Iris* (soft and rounded, violet), *Reader* (replies set as reading text in a serif) and *Ledger* (a dense transcript, amber). Each has a light and a dark version that follows your system. The choice is shared by every window.
+
 **Model** and **Effort** (also under Access) choose the Claude model and how hard it thinks; they apply from the next message and the conversation carries on. *Default* leaves it to Claude Code (or `CLAUDE_FOR_ZEN_MODEL`, if set). `CLAUDE_FOR_ZEN_CHAT_PORT` picks the port.
 
 ## On the page

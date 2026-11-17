@@ -142,6 +142,13 @@ try {
   check('refusing opens nothing', ![...b.items.values()].some((i) => i.type === 'tool' && i.name === 'mcp__history__open_plain_browser' && i.state === 'done'), [...b.items.values()].slice(-3));
 
   // A permission question in one window is announced in the others.
+  // The look is shared by every window, and changing it does not disturb Claude.
+  await b.tell({ type: 'settings', theme: 'ledger' });
+  const page = await (await fetch(base + '/')).text();
+  check('a look chosen in one window reaches the others and new pages', a3.settings?.theme === 'ledger' && c.settings?.theme === 'ledger' && /data-theme="ledger"/.test(page), [a3.settings, c.settings]);
+  await b.tell({ type: 'settings', theme: 'nonsense' });
+  check('an unknown look is ignored', b.settings?.theme === 'ledger', b.settings);
+
   // An access level belongs to one conversation, unless it is set for all of them.
   await b.tell({ type: 'settings', access: 'ask', folder: home });
   check('an access level is for one conversation only', b.settings?.access === 'ask' && a3.settings?.access === 'browser' && c.settings?.access === 'browser', [b.settings, a3.settings, c.settings]);
