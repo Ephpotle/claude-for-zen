@@ -191,10 +191,18 @@ try {
   await call('navigate', { tabId, url: base + '/strict' });
   const stale = await call('click', { tabId, ref: countRef });
   check('stale ref gives a clear error', stale.isError && stale.text.includes('no longer'), stale.text);
-  // On a page whose policy forbids eval, the code is NOT run in the add-on's own world as a fallback:
-  // there it would have the add-on's powers. It is refused, with a pointer to the other tools.
+  // On a page whose policy forbids eval, the code runs as a script of the page itself
+  // (never in the add-on's own world, where it would have the add-on's powers).
   js = await call('javascript', { tabId, code: 'document.title' });
-  check('javascript is refused under strict CSP rather than run with add-on powers', js.isError && /forbids running script/.test(js.text), js.text);
+  check('javascript works under strict CSP', !js.isError && js.text.includes('Smoke page'), js.text);
+  js = await call('javascript', { tabId, code: '[typeof browser, typeof chrome, typeof window.wrappedJSObject].join()' });
+  check('and there it has no add-on powers', !js.isError && js.text.includes('undefined,undefined,undefined'), js.text);
+  js = await call('javascript', { tabId, code: 'const t = document.title; return t.length > 3 ? "long" : "short";' });
+  check('several statements work there with return', !js.isError && js.text.includes('long') && js.text.includes('use `return`'), js.text);
+  js = await call('javascript', { tabId, code: 'new Promise((r) => setTimeout(() => r({ a: [1, 2] }), 50))' });
+  check('promises are awaited there', !js.isError && js.text.includes('"a"'), js.text);
+  js = await call('javascript', { tabId, code: 'nope.nope' });
+  check('and errors are reported there', js.isError && js.text.includes('nope'), js.text);
   const stillReads = await call('get_page_text', { tabId });
   check('the page can still be read under strict CSP', !stillReads.isError && stillReads.text.includes('The very bottom'), stillReads.text);
 

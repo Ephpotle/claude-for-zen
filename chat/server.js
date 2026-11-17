@@ -243,6 +243,21 @@ function whereIsUser() {
     if (!tellAddon({ type: 'where', id })) finish(null);
   });
 }
+// Pictures pasted into the panel: at most four, of the kinds Claude takes, each with a
+// small preview that is kept with the conversation (the full picture is not).
+const PICTURE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+function pictures(list) {
+  if (!Array.isArray(list)) return [];
+  return list
+    .slice(0, 4)
+    .filter((p) => p && PICTURE_TYPES.includes(p.mediaType) && typeof p.data === 'string' && p.data.length < 7_000_000 && /^[A-Za-z0-9+/]+=*$/.test(p.data))
+    .map((p) => ({
+      mediaType: p.mediaType,
+      data: p.data,
+      preview: typeof p.preview === 'string' && p.preview.length < 80_000 && /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/]+=*$/.test(p.preview) ? p.preview : null,
+    }));
+}
+
 const clipText = (value, n) => (String(value ?? '').length > n ? String(value).slice(0, n - 1) + '…' : String(value ?? ''));
 
 // Every other add-on connection serves one Explain card or one comment.
@@ -344,18 +359,18 @@ wss.on('connection', (socket, req) => {
     if (!msg || typeof msg !== 'object') return;
     conversation.touched = Date.now();
     if (msg.type === 'touch') return;
-    if (msg.type === 'send' && typeof msg.text === 'string' && msg.text.trim()) {
+    if (msg.type === 'send' && typeof msg.text === 'string') {
       const text = msg.text.trim();
+      const images = pictures(msg.images);
+      if (!text && !images.length) return;
       const seat = conversation;
       if (seat.busy) return;
       whereIsUser().then((where) => {
-        if (!where?.tab) return seat.send(text);
+        if (!where?.tab) return seat.send(text, text, images);
         // This conversation now belongs to that window: new tabs and comment mode go there.
         seat.windowId = where.tab.windowId;
         const note = `[Browser: when this was sent the user was looking at tab ${where.tab.tabId}, “${clipText(where.tab.title, 80)}” — ${clipText(where.tab.url, 200)}, in window ${where.tab.windowId}${where.windows > 1 ? ` (${where.windows} windows are open)` : ''}${where.tab.incognito ? ', a private window' : ''}.]`;
-        seat.send(`${note}
-
-${text}`, text);
+        seat.send(text ? `${note}\n\n${text}` : note, text, images);
       });
     }
     else if (msg.type === 'stop') conversation.stop();

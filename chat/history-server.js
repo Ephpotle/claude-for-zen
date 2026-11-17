@@ -38,7 +38,7 @@ function load() {
 function render(item, full) {
   const limit = full ? 20000 : 600;
   switch (item.type) {
-    case 'user': return `USER: ${clip(item.text, limit)}`;
+    case 'user': return `USER: ${clip(item.text, limit)}${item.pictures ? ` [with ${item.pictures} picture${item.pictures === 1 ? '' : 's'}, not kept]` : ''}`;
     case 'text': return `CLAUDE: ${clip(item.text, limit)}`;
     case 'tool': return `  step (${item.state}): ${item.label}${item.input ? `\n    input: ${clip(item.input, full ? 8000 : 300)}` : ''}${item.detail ? `\n    ${clip(item.detail, 300)}` : ''}`;
     case 'ask': return `  asked the user (${item.state}): ${item.title}\n${clip(item.body, full ? 12000 : 300).split('\n').map((l) => '    ' + l).join('\n')}`;

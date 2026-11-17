@@ -9,12 +9,42 @@ import os from 'node:os';
 import path from 'node:path';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { deflateSync } from 'node:zlib';
 import WebSocket from 'ws';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 47816;
 const base = `http://127.0.0.1:${PORT}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** A one-colour PNG as base64, made by hand so the test needs no image library. */
+function solidPng(width, height, [r, g, b]) {
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (buf) => {
+    let c = 0xffffffff;
+    for (const byte of buf) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type, data) => {
+    const head = Buffer.alloc(4);
+    head.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const tail = Buffer.alloc(4);
+    tail.writeUInt32BE(crc(body));
+    return Buffer.concat([head, body, tail]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 2, 0, 0, 0], 8); // 8 bits, RGB
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: width }, () => [r, g, b]).flat())]);
+  const pixels = Buffer.concat(Array.from({ length: height }, () => row));
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(pixels)), chunk('IEND', Buffer.alloc(0))]).toString('base64');
+}
 const home = mkdtempSync(path.join(os.tmpdir(), 'claude-for-zen-test-'));
 const chat = spawn(process.execPath, [path.join(root, 'chat/server.js')], {
   env: { ...process.env, CLAUDE_FOR_ZEN_CHAT_PORT: String(PORT), CLAUDE_FOR_ZEN_HOME: home, CLAUDE_FOR_ZEN_DEV_ONLY: '1', CLAUDE_FOR_ZEN_MODEL: 'haiku' },
@@ -104,6 +134,17 @@ try {
   await c.say('In an earlier conversation I asked you for a list that ended with the word PEAR. Find that conversation and tell me: how many numbers did I ask you to write? Answer with the number as a word.');
   const looked = [...c.items.values()].filter((i) => i.type === 'tool' && i.name.startsWith('mcp__history__') && i.state === 'done');
   check('a new conversation can look up an earlier one', looked.length > 0 && /thirty/i.test(c.text()) && ![...c.items.values()].some((i) => i.type === 'ask'), [...c.items.values()]);
+  // A picture pasted into the panel goes to Claude with the message; only a small preview is kept.
+  const red = solidPng(48, 48, [220, 30, 30]);
+  c.ws.send(JSON.stringify({ type: 'send', text: 'What single colour fills this picture? Answer with one word.', images: [{ mediaType: 'image/png', data: red, preview: 'data:image/png;base64,' + red }, { mediaType: 'text/html', data: 'PGI+' }] }));
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('picture turn timed out')), 180_000);
+    c.idle = () => (clearTimeout(timer), resolve());
+  });
+  const sentPicture = [...c.items.values()].find((i) => i.type === 'user' && i.pictures);
+  check('a pasted picture reaches Claude', /red/i.test(c.text()) && sentPicture?.pictures === 1 && sentPicture.previews?.length === 1, [sentPicture && { ...sentPicture, previews: sentPicture.previews?.length }, c.text().slice(-80)]);
+  await c.tell({ type: 'reset' });
+
   // Graphics in the reply itself, and a report for the developer.
   await c.say('Draw a small bar chart in the chat comparing the values 3 and 5.');
   const figure = [...c.items.values()].find((i) => i.type === 'figure');

@@ -466,14 +466,18 @@ export class Conversation {
   }
 
   /** `shown` is what the panel displays, when that differs from what Claude is sent. */
-  send(text, shown = text) {
+  send(text, shown = text, images = []) {
     if (this.busy) return false;
-    this.add({ type: 'user', text: shown });
+    const previews = images.map((image) => image.preview).filter(Boolean);
+    this.add({ type: 'user', text: shown, ...(images.length ? { pictures: images.length, previews } : {}) });
     this.setBusy(true);
     this.currentText = null;
     try {
       this.ensureProcess();
-      this.child.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: text } }) + '\n');
+      const content = images.length
+        ? [...images.map((image) => ({ type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.data } })), ...(text ? [{ type: 'text', text }] : [])]
+        : text;
+      this.child.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content } }) + '\n');
     } catch (err) {
       this.fail(`Could not start Claude Code: ${err.message}`);
     }

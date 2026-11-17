@@ -119,6 +119,19 @@ function addItem(item) {
       el.innerHTML = markdown(item.text);
     } else {
       el.textContent = item.text;
+      // Pictures sent with a message: small previews, or a note where none was kept.
+      if (item.type === 'user' && item.pictures) {
+        const strip = document.createElement('div');
+        strip.className = 'pictures';
+        for (const src of item.previews || []) {
+          const img = document.createElement('img');
+          img.src = src;
+          img.alt = 'Picture you sent';
+          strip.append(img);
+        }
+        if (!strip.children.length) strip.textContent = `${item.pictures} picture${item.pictures === 1 ? '' : 's'}`;
+        el.append(strip);
+      }
     }
     log.append(el);
   }
@@ -346,15 +359,102 @@ function setBusy(value) {
 }
 
 function refreshAction() {
-  action.disabled = !socket || socket.readyState !== WebSocket.OPEN || (!busy && !input.value.trim());
+  action.disabled = !socket || socket.readyState !== WebSocket.OPEN || (!busy && !input.value.trim() && !attached.length);
 }
+
+// ------------------------------------------------------------------ pictures
+
+// Pictures waiting to go with the next message: pasted or dropped onto the box.
+let attached = []; // { mediaType, data (base64), preview (small data URL) }
+const attachments = document.getElementById('attachments');
+const MAX_PICTURES = 4;
+
+function showAttached() {
+  attachments.replaceChildren();
+  attachments.hidden = attached.length === 0;
+  attached.forEach((picture, i) => {
+    const item = document.createElement('span');
+    const img = document.createElement('img');
+    img.src = picture.preview;
+    img.alt = 'Picture to send';
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.textContent = '×';
+    remove.title = 'Remove this picture';
+    remove.addEventListener('click', () => {
+      attached.splice(i, 1);
+      showAttached();
+    });
+    item.append(img, remove);
+    attachments.append(item);
+  });
+  refreshAction();
+}
+
+/** Draw the picture at most `side` pixels on its longer edge and return it as a data URL. */
+function scaled(image, side, type, quality) {
+  const scale = Math.min(1, side / Math.max(image.naturalWidth, image.naturalHeight));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+  canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL(type, quality);
+}
+
+async function attach(file) {
+  if (!file || !/^image\/(png|jpeg|gif|webp)$/.test(file.type)) return;
+  if (attached.length >= MAX_PICTURES) return showNotice(`At most ${MAX_PICTURES} pictures per message.`);
+  const url = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+  const image = new Image();
+  await new Promise((resolve, reject) => {
+    image.onload = resolve;
+    image.onerror = () => reject(new Error('That picture could not be read.'));
+    image.src = url;
+  });
+  // Large screenshots are scaled to what Claude reads anyway, which also keeps the message small.
+  const big = Math.max(image.naturalWidth, image.naturalHeight) > 1568 || url.length > 4_000_000;
+  const sent = big ? scaled(image, 1568, 'image/jpeg', 0.9) : url;
+  attached.push({
+    mediaType: sent.slice(5, sent.indexOf(';')),
+    data: sent.slice(sent.indexOf(',') + 1),
+    preview: scaled(image, 240, 'image/jpeg', 0.7),
+  });
+  showAttached();
+}
+
+function attachAll(files) {
+  for (const file of files) attach(file).catch((err) => showNotice(err.message));
+}
+
+input.addEventListener('paste', (event) => {
+  const files = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith('image/'));
+  if (!files.length) return; // ordinary text paste
+  event.preventDefault();
+  attachAll(files);
+});
+form.addEventListener('dragover', (event) => {
+  if ([...(event.dataTransfer?.types || [])].includes('Files')) event.preventDefault();
+});
+form.addEventListener('drop', (event) => {
+  const files = [...(event.dataTransfer?.files || [])].filter((file) => file.type.startsWith('image/'));
+  if (!files.length) return;
+  event.preventDefault();
+  attachAll(files);
+});
 
 // ------------------------------------------------------------------- actions
 
 function send(text) {
   text = text.trim();
-  if (!text || busy || !socket || socket.readyState !== WebSocket.OPEN) return false;
-  socket.send(JSON.stringify({ type: 'send', text }));
+  if ((!text && !attached.length) || busy || !socket || socket.readyState !== WebSocket.OPEN) return false;
+  socket.send(JSON.stringify({ type: 'send', text, images: attached }));
+  attached = [];
+  showAttached();
   setBusy(true); // the message itself comes back from the server as an item
   return true;
 }

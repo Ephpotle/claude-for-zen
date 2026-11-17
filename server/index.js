@@ -252,7 +252,7 @@ tool(
 
 tool(
   'javascript',
-  'Run JavaScript in the page and return the value of the last expression (a promise is awaited). Top-level `return` and `await` are not allowed: to use await, end with an async function call, e.g. (async () => { const r = await fetch(url); return r.status; })()',
+  'Run JavaScript in the page and return the value of the last expression (a promise is awaited). Top-level `return` and `await` are not allowed: to use await, end with an async function call, e.g. (async () => { const r = await fetch(url); return r.status; })(). Write the code as ONE expression (an arrow function call is fine): some sites forbid eval, and there only a single expression, or statements ending in `return`, will work.',
   { tabId, code: z.string() },
   { timeout: 60_000 },
 );

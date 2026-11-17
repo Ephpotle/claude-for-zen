@@ -225,6 +225,41 @@ function guardUrl(url) {
   return url;
 }
 
+/**
+ * Run code as a script of the page itself, for pages that forbid eval.
+ *
+ * The scripting API injects a function, not a string, so the code is first
+ * made into one here. Making a function does not run it: nothing of the code
+ * executes in this background page. Because there is no eval in the page, the
+ * "value of the last expression" rule cannot be kept for code with several
+ * statements; such code has to `return` its result.
+ */
+const STRINGIFY = 'try { return v === undefined ? "undefined" : JSON.stringify(v, null, 2); } catch (e) { return String(v); }';
+async function runInPageWorld(tabId, code) {
+  if (!browser.scripting || !browser.scripting.executeScript) {
+    throw new Error("This page's security policy forbids running script, and this browser is too old to run it another way. Use read_page, find, click, type and form_input instead.");
+  }
+  let func;
+  let statements = false;
+  try {
+    func = new Function(`return (async () => { const v = await (\n${code}\n); ${STRINGIFY} })()`);
+  } catch {
+    try {
+      func = new Function(`return (async () => { const v = await (async () => {\n${code}\n})(); ${STRINGIFY} })()`);
+      statements = true;
+    } catch (err) {
+      throw new Error(`SyntaxError: ${err.message}`);
+    }
+  }
+  const [outcome] = await browser.scripting.executeScript({ target: { tabId, frameIds: [0] }, world: 'MAIN', func });
+  if (!outcome) throw new Error('The page did not run the script.');
+  if (outcome.error) throw new Error(String(outcome.error.message || outcome.error));
+  const note = statements
+    ? "(Note: this page forbids eval, so the code ran as a function body. Its value is whatever it returned; use `return` to give a result.)"
+    : '';
+  return note ? `${outcome.result}\n\n${note}` : outcome.result;
+}
+
 function unscriptable(tab) {
   return new Error(
     `Zen does not let extensions touch this page (${tab.url || 'restricted page'}). Navigate the tab to a normal web page first.`,
@@ -450,13 +485,13 @@ const handlers = {
   async javascript({ tabId, code }) {
     const result = await inPage(tabId, 'javascript', { code });
     if (!result.blockedByCsp) return result.value;
-    // The page's Content-Security-Policy forbids eval. The code used to be run
-    // in the add-on's content-script world instead, but there it has powers a
-    // page script does not (the add-on's messaging, requests that skip the
-    // page's cross-origin rules), which is too much to hand to generated code.
-    throw new Error(
-      "This page's security policy (CSP) forbids running script, so `javascript` is not available here. Use read_page, find, get_page_text, click, type and form_input instead.",
-    );
+    // The page's Content-Security-Policy forbids eval, so the usual route is
+    // closed. Run the code in the page's own world through the scripting API
+    // instead: there it is an ordinary page script, with the page's variables
+    // and none of the add-on's powers. (It must never be run in the add-on's
+    // content-script world, where it would have the add-on's messaging and
+    // requests that skip the page's cross-origin rules.)
+    return runInPageWorld(tabId, code);
   },
 
   async console_messages({ tabId, pattern, onlyErrors, limit, clear }) {
