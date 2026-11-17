@@ -367,3 +367,20 @@ button {
     animation: none;
   }
 }
+
+/* Tables in an explanation */
+.answer table {
+  border-collapse: collapse;
+  margin: 0 0 9px;
+  font-size: 0.93em;
+}
+.answer th,
+.answer td {
+  padding: 3px 9px 3px 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line, rgba(128, 128, 128, 0.3));
+}
+.answer th {
+  font-weight: 600;
+}

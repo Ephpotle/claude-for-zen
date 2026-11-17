@@ -125,6 +125,7 @@ const fileName = (p) => short(path.basename(String(p ?? '')) || String(p ?? ''),
 
 /** What to show while a tool runs, in the user's terms. */
 export function describeCall(name, input = {}) {
+  if (name === 'Task' || name === 'Agent') return `Helper: ${short(input.description || input.prompt || 'a sub-task', 70)}`;
   if (name === 'mcp__history__open_plain_browser') return `Opening a separate plain Zen window at ${site(input.url)}`;
   if (name === 'mcp__history__conversations_search') return input.query ? `Looking through earlier conversations for “${short(input.query, 40)}”` : 'Looking through earlier conversations';
   if (name === 'mcp__history__conversation_read') return 'Reading an earlier conversation';
@@ -276,6 +277,22 @@ export function claudeCommand() {
 /** The settings as kept on disk and shared between conversations. */
 const shared = (settings) => ({ ...settings, access: settings.accessForAll ? settings.access : 'browser' });
 
+// Slash commands that make no sense in the panel: it has its own way to start a new chat,
+// pick a model and effort, and the rest are set-up or terminal matters.
+const HIDDEN_COMMANDS = new Set(['clear', 'config', 'model', 'effort', 'fast', 'autocompact', 'output-style', 'heapdump', 'import', 'init', 'rename', 'reload-skills', 'workflow-launch-exec', 'design-consent', 'design-revoke', 'extra-usage', 'usage-credits', 'auto-mode-setup', 'team-onboarding', 'advisor']);
+let commands = []; // shared by every conversation; filled from disk, then from Claude Code itself
+
+/** The slash commands to offer, as last reported by Claude Code. */
+export function knownCommands(home) {
+  if (!commands.length && home) {
+    try {
+      const saved = JSON.parse(readFileSync(path.join(home, 'commands.json'), 'utf8'));
+      if (Array.isArray(saved)) commands = saved.filter((name) => typeof name === 'string' && /^[\w:-]+$/.test(name)).slice(0, 200);
+    } catch {}
+  }
+  return commands;
+}
+
 export class Conversation {
   constructor({ workDir, mcpServerPath, model, resume = true }) {
     this.workDir = workDir;
@@ -361,7 +378,9 @@ export class Conversation {
         path.join(this.storeDir, this.id + '.json'),
         JSON.stringify({
           id: this.id,
-          title: short(first ? first.text : 'Conversation', 70),
+          title: this.customTitle || short(first ? first.text : 'Conversation', 70),
+          ...(this.customTitle ? { customTitle: this.customTitle } : {}),
+          ...(this.archived ? { archived: true } : {}),
           updatedAt: this.updatedAt || Date.now(),
           sessionId: this.sessionId,
           nextId: this.nextId,
@@ -387,6 +406,8 @@ export class Conversation {
     this.sessionId = saved.sessionId || null;
     this.nextId = saved.nextId || this.history.length + 1;
     this.updatedAt = saved.updatedAt;
+    this.customTitle = typeof saved.customTitle === 'string' ? saved.customTitle : '';
+    this.archived = saved.archived === true;
     // A conversation comes back with the access it had, except that "without asking"
     // has to be chosen again: it is too much to switch on by reopening something.
     if (!this.settings.accessForAll) {
@@ -408,7 +429,7 @@ export class Conversation {
       if (!file.endsWith('.json')) continue;
       try {
         const saved = JSON.parse(readFileSync(path.join(this.storeDir, file), 'utf8'));
-        out.push({ id: saved.id, title: saved.title, updatedAt: saved.updatedAt, messages: saved.history.filter((i) => i.type === 'user').length });
+        out.push({ id: saved.id, title: saved.title, updatedAt: saved.updatedAt, messages: saved.history.filter((i) => i.type === 'user').length, archived: saved.archived === true });
       } catch {}
     }
     return out.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -429,6 +450,35 @@ export class Conversation {
     this.broadcastWhole();
   }
 
+  /**
+   * Rename or archive a conversation, here or on disk. `changes` may hold
+   * `title` (empty goes back to the first message) and `archived`.
+   */
+  amend(id, changes) {
+    const title = typeof changes.title === 'string' ? short(changes.title.replace(/\s+/g, ' ').trim(), 70) : undefined;
+    if (id === this.id) {
+      if (title !== undefined) this.customTitle = title;
+      if (typeof changes.archived === 'boolean') this.archived = changes.archived;
+      this.save();
+      return;
+    }
+    const file = path.join(this.storeDir, id + '.json');
+    try {
+      const saved = JSON.parse(readFileSync(file, 'utf8'));
+      if (title !== undefined) {
+        saved.customTitle = title;
+        const first = saved.history.find((item) => item.type === 'user');
+        saved.title = title || short(first ? first.text : 'Conversation', 70);
+        if (!title) delete saved.customTitle;
+      }
+      if (typeof changes.archived === 'boolean') {
+        if (changes.archived) saved.archived = true;
+        else delete saved.archived;
+      }
+      writeFileSync(file, JSON.stringify(saved));
+    } catch {}
+  }
+
   remove(id) {
     try {
       unlinkSync(path.join(this.storeDir, id + '.json'));
@@ -441,7 +491,7 @@ export class Conversation {
 
   /** Tell every open panel to redraw from scratch. */
   broadcastWhole() {
-    for (const fn of this.subscribers) fn({ type: 'history', events: this.history, busy: this.busy, settings: this.settings, status: { ...this.status, now: Date.now() }, id: this.id });
+    for (const fn of this.subscribers) fn({ type: 'history', events: this.history, busy: this.busy, settings: this.settings, status: { ...this.status, now: Date.now() }, commands: knownCommands(path.dirname(this.settingsFile)), id: this.id });
   }
 
   add(item) {
@@ -465,7 +515,13 @@ export class Conversation {
       this.restartWhenIdle = false;
       this.kill();
     }
-    if (!busy) this.idleTimer = setTimeout(() => this.kill(), IDLE_MS);
+    if (!busy) {
+      const putAway = () => {
+        if (this.helperAtWork()) this.idleTimer = setTimeout(putAway, IDLE_MS);
+        else this.kill();
+      };
+      this.idleTimer = setTimeout(putAway, IDLE_MS);
+    }
   }
 
   /** `shown` is what the panel displays, when that differs from what Claude is sent. */
@@ -533,6 +589,8 @@ export class Conversation {
     this.save();
     this.id = newId();
     this.updatedAt = null;
+    this.customTitle = '';
+    this.archived = false;
     try {
       unlinkSync(this.currentFile);
     } catch {}
@@ -677,10 +735,11 @@ export class Conversation {
       '--include-partial-messages',
       '--strict-mcp-config',
       '--mcp-config', this.mcpConfig,
-      '--tools', access === 'browser' ? '' : COMPUTER_TOOLS,
+      // "Task" is the tool that starts a helper. On its own it adds no power: a helper gets
+      // the same tools as the conversation, and its requests are asked about in the same way.
+      '--tools', access === 'browser' ? 'Task' : COMPUTER_TOOLS,
       '--allowedTools', ['mcp__zen', ...PANEL_FREE, ...(spaces ? SPACES_READ : []), ...(scripts ? VM_READ : [])].join(','),
       '--setting-sources', 'project', // skip personal plugins and hooks
-      '--disable-slash-commands',
       '--system-prompt-file', this.promptFile,
     ];
     if (spaces) args.push('--disallowedTools', SPACES_HIDDEN.join(','));
@@ -760,7 +819,7 @@ export class Conversation {
   track(msg) {
     // A plugin's own status ticks say nothing about whether Claude is alive.
     if (msg.type === 'system' && msg.subtype === 'ui_status') return;
-    if (!this.busy) return;
+    if (!this.busy && !(msg.type === 'system' && /^task_/.test(msg.subtype || ''))) return;
     this.status.lastNews = Date.now();
     if (msg.type === 'system') {
       if (msg.subtype === 'status' && msg.status === 'requesting' && !msg.parent_tool_use_id) this.setStatus({ phase: 'waiting', detail: '' });
@@ -797,12 +856,85 @@ export class Conversation {
     }
   }
 
+  // ---- helpers: a sub-task Claude hands to a second Claude ("subagent")
+
+  /** The step in the trail that started a helper, by the id of that tool call. */
+  helperItem(toolUseId) {
+    const item = this.history.find((i) => i.type === 'tool' && i.toolUseId === toolUseId);
+    if (item && !item.helper) item.helper = { steps: [], tokens: 0, tools: 0, state: 'running' };
+    return item;
+  }
+
+  /** Start, progress and end of a helper, as Claude Code reports them. */
+  helperTask(msg) {
+    if (msg.task_type && msg.task_type !== 'local_agent') return; // a shell command in the background, say
+    const item = this.history.find((i) => i.type === 'tool' && i.toolUseId === msg.tool_use_id && (i.helper || msg.subtype === 'task_started'));
+    if (!item) return;
+    const helper = { ...(item.helper || { steps: [], tokens: 0, tools: 0, state: 'running' }) };
+    if (msg.subtype === 'task_started') helper.kind = msg.subagent_type || '';
+    if (msg.subtype === 'task_progress') {
+      helper.tokens = msg.usage?.total_tokens ?? helper.tokens;
+      helper.tools = msg.usage?.tool_uses ?? helper.tools;
+      helper.ms = msg.usage?.duration_ms ?? helper.ms;
+    }
+    if (msg.subtype === 'task_notification') helper.state = msg.status === 'completed' ? 'done' : msg.status || 'done';
+    this.update(item, { helper });
+    if (msg.subtype === 'task_notification' && !this.busy && !this.helperAtWork()) this.setStatus({ phase: 'done', ended: Date.now(), detail: '' });
+  }
+
+  /** What a helper does: its own steps, listed under the step that started it. */
+  helperMessage(msg) {
+    const item = this.helperItem(msg.parent_tool_use_id);
+    if (!item) return;
+    const content = msg.message?.content;
+    if (!Array.isArray(content)) return;
+    const steps = item.helper.steps.slice();
+    let changed = false;
+    for (const block of content) {
+      if (msg.type === 'assistant' && block.type === 'tool_use') {
+        steps.push({ id: block.id, label: describeCall(block.name, block.input), state: 'running' });
+        changed = true;
+      } else if (msg.type === 'user' && block.type === 'tool_result') {
+        const step = steps.find((s) => s.id === block.tool_use_id);
+        if (step) {
+          step.state = block.is_error ? 'failed' : 'done';
+          step.label = describeResult('', step.label, '', false).label;
+          changed = true;
+        }
+      }
+    }
+    if (changed) this.update(item, { helper: { ...item.helper, steps: steps.slice(-200) } });
+  }
+
+  /** A helper that is still at work, if any. */
+  helperAtWork() {
+    return this.history.find((item) => item.type === 'tool' && item.helper?.state === 'running');
+  }
+
   handle(msg) {
+    if (!this.busy && msg.type === 'stream_event' && msg.event?.type === 'message_start' && !msg.parent_tool_use_id) {
+      // Claude starting again without a new message from the user: a background helper reported.
+      this.setBusy(true);
+      this.status = { phase: 'starting', since: Date.now(), phaseSince: Date.now(), lastNews: Date.now(), tokens: 0, limit: this.status.limit };
+      this.sendStatus();
+    }
     try {
       this.track(msg);
     } catch {}
     if (msg.type === 'system' && msg.subtype === 'init') {
       this.sessionId = msg.session_id;
+      // The commands this Claude Code offers, for the panel's menu.
+      if (Array.isArray(msg.slash_commands)) {
+        const terminal = new Set(msg.terminal_slash_commands || []);
+        const list = msg.slash_commands.filter((name) => typeof name === 'string' && /^[\w:-]+$/.test(name) && !terminal.has(name) && !HIDDEN_COMMANDS.has(name) && !name.startsWith('__')).slice(0, 200);
+        if (list.join() !== commands.join()) {
+          commands = list;
+          for (const fn of this.subscribers) fn({ type: 'commands', list });
+          try {
+            writeFileSync(path.join(path.dirname(this.settingsFile), 'commands.json'), JSON.stringify(list));
+          } catch {}
+        }
+      }
       // Remember what "Default" turns out to be, so the panel can name it.
       if (!this.settings.model && msg.model && msg.model !== this.settings.defaultModel) {
         this.settings = { ...this.settings, defaultModel: msg.model };
@@ -833,9 +965,11 @@ export class Conversation {
       }
       return;
     }
-    if (msg.parent_tool_use_id) return; // inner workings of sub-tasks
+    if (msg.type === 'system' && /^task_(started|progress|notification)$/.test(msg.subtype || '')) return this.helperTask(msg);
+    if (msg.parent_tool_use_id) return this.helperMessage(msg);
     if (msg.type === 'stream_event') {
       const event = msg.event;
+      if (event.type === 'message_start') this.streamedMessage = event.message?.id;
       if (event.type === 'content_block_start') this.currentText = null;
       if (event.type === 'content_block_delta' && event.delta.type === 'text_delta' && event.delta.text) {
         if (!this.currentText) this.currentText = this.add({ type: 'text', text: '' });
@@ -845,7 +979,14 @@ export class Conversation {
       return;
     }
     if (msg.type === 'assistant') {
+      // Text normally arrives piece by piece and is already on screen. The answer
+      // to a slash command (/context, /usage) comes whole, with no pieces before it.
+      const whole = msg.message.id !== this.streamedMessage;
       for (const block of msg.message.content || []) {
+        if (whole && block.type === 'text' && block.text) {
+          this.currentText = null;
+          this.add({ type: 'text', text: block.text });
+        }
         if (block.type !== 'tool_use') continue;
         this.currentText = null;
         // The input is kept (not shown) so a later conversation can look up exactly what was done.
@@ -891,6 +1032,9 @@ export class Conversation {
       });
       this.currentText = null;
       this.settle('stopped');
+      // The turn is over, but a helper may still be working in the background.
+      const helper = this.helperAtWork();
+      if (helper) this.setStatus({ phase: 'helper', detail: helper.label.replace(/^Helper: /, ''), ended: undefined });
       if (msg.is_error) this.add({ type: 'error', text: short(msg.result || `Claude Code reported an error (${msg.subtype}).`, 500) });
       this.setBusy(false);
     }

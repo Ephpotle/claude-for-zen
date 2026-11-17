@@ -84,9 +84,34 @@ function showStatus() {
 }
 setInterval(showStatus, 1000);
 
+/** A helper (a second Claude given part of the job): a summary line that opens to its own steps. */
+function helperBlock(helper, open) {
+  const details = document.createElement('details');
+  details.className = 'helper';
+  details.open = open;
+  const summary = document.createElement('summary');
+  const steps = helper.steps || [];
+  const last = steps.at(-1);
+  const facts = [`${steps.length || helper.tools || 0} step${(steps.length || helper.tools || 0) === 1 ? '' : 's'}`];
+  if (helper.tokens) facts.push(`${amount(helper.tokens)} tokens`);
+  if (helper.ms) facts.push(clock(helper.ms));
+  summary.textContent = facts.join(' · ') + (helper.state === 'running' && last ? ` · ${last.label}` : '');
+  const list = document.createElement('ol');
+  for (const step of steps) {
+    const li = document.createElement('li');
+    li.className = step.state;
+    li.textContent = step.label;
+    list.append(li);
+  }
+  details.append(summary, list);
+  return details;
+}
+
 function toolLine(el, item) {
+  const wasOpen = !!el.querySelector('details[open]');
   el.className = item.state;
   el.textContent = item.label;
+  if (item.helper) el.append(helperBlock(item.helper, wasOpen));
   if (item.state === 'failed' && item.detail) {
     const detail = document.createElement('small');
     detail.textContent = item.detail;
@@ -257,6 +282,11 @@ function addItem(item) {
 function onEvent(event) {
   // Only these carry the conversation's id; on other events `id` is an item.
   if ((event.type === 'history' || event.type === 'reset') && event.id) rememberSeat(event.id);
+  if (Array.isArray(event.commands)) commandNames = event.commands;
+  if (event.type === 'commands') {
+    commandNames = event.list || [];
+    return;
+  }
   if (event.status) {
     status = event.status;
     if (event.status.now) clockSkew = event.status.now - Date.now();
@@ -423,39 +453,124 @@ function when(ms) {
   return date.toLocaleDateString([], { day: 'numeric', month: 'short', year: days > 300 ? 'numeric' : undefined });
 }
 
+let showArchived = false;
+let lastList = [];
+
+const ICONS = {
+  rename: 'M3 13.5V17h3.5L16 7.5 12.5 4 3 13.5zM11 5.5l3.5 3.5',
+  archive: 'M3 5h14v3H3zM4.5 8v8h11V8M8 11h4',
+  restore: 'M4 10a6 6 0 1 1 2 4.5M4 15v-4h4',
+};
+function iconButton(kind, title, onClick) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'act';
+  button.title = title;
+  button.setAttribute('aria-label', title);
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 20 20');
+  svg.setAttribute('width', '15');
+  svg.setAttribute('height', '15');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.6');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', ICONS[kind]);
+  svg.append(path);
+  button.append(svg);
+  button.addEventListener('click', onClick);
+  return button;
+}
+
+function conversationRow(entry, current) {
+  const row = document.createElement('li');
+  if (entry.id === current) row.className = 'current';
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'open';
+  const title = document.createElement('span');
+  title.textContent = entry.title;
+  const meta = document.createElement('small');
+  const facts = [when(entry.updatedAt), `${entry.messages} message${entry.messages === 1 ? '' : 's'}`];
+  if (entry.working) facts.push('working');
+  if (entry.elsewhere) facts.push('open in another window');
+  meta.textContent = facts.join(', ');
+  if (entry.working) meta.className = 'working';
+  open.append(title, meta);
+  open.addEventListener('click', () => {
+    socket.send(JSON.stringify({ type: 'open', id: entry.id }));
+    toggleHistory(false);
+  });
+
+  // Rename in place: the title turns into a box; Enter keeps it, Escape leaves it.
+  const rename = iconButton('rename', 'Rename', () => {
+    const box = document.createElement('input');
+    box.type = 'text';
+    box.className = 'rename';
+    box.value = entry.title;
+    box.maxLength = 70;
+    box.setAttribute('aria-label', 'New name for this conversation');
+    let done = false;
+    const finish = (keep) => {
+      if (done) return;
+      done = true;
+      if (keep && box.value.trim() !== entry.title) socket.send(JSON.stringify({ type: 'rename', id: entry.id, title: box.value }));
+      else showConversations(lastList, current);
+    };
+    box.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') finish(true);
+      else if (event.key === 'Escape') finish(false);
+    });
+    box.addEventListener('blur', () => finish(true));
+    row.replaceChildren(box);
+    box.focus();
+    box.select();
+  });
+  const archive = entry.archived
+    ? iconButton('restore', 'Move back out of the archive', () => socket.send(JSON.stringify({ type: 'archive', id: entry.id, archived: false })))
+    : iconButton('archive', 'Archive: keep it, but out of this list', () => socket.send(JSON.stringify({ type: 'archive', id: entry.id, archived: true })));
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'act delete';
+  remove.textContent = '×';
+  remove.title = 'Delete this conversation';
+  remove.addEventListener('click', () => {
+    // Deleting cannot be undone, so the first click only arms the button.
+    if (remove.dataset.armed) return socket.send(JSON.stringify({ type: 'delete', id: entry.id }));
+    remove.dataset.armed = '1';
+    remove.textContent = 'Delete?';
+    remove.classList.add('armed');
+  });
+  const actions = document.createElement('span');
+  actions.className = 'acts';
+  actions.append(rename, archive, remove);
+  row.append(open, actions);
+  return row;
+}
+
 function showConversations(list, current) {
+  lastList = list;
+  currentId = current;
   historyList.replaceChildren();
+  const live = list.filter((entry) => !entry.archived);
+  const archived = list.filter((entry) => entry.archived);
   document.getElementById('history-empty').hidden = list.length > 0;
-  for (const entry of list) {
-    const row = document.createElement('li');
-    if (entry.id === current) row.className = 'current';
-    const open = document.createElement('button');
-    open.type = 'button';
-    open.className = 'open';
-    const title = document.createElement('span');
-    title.textContent = entry.title;
-    const meta = document.createElement('small');
-    meta.textContent = `${when(entry.updatedAt)}, ${entry.messages} message${entry.messages === 1 ? '' : 's'}${entry.elsewhere ? ', open in another window' : ''}`;
-    open.append(title, meta);
-    open.addEventListener('click', () => {
-      socket.send(JSON.stringify({ type: 'open', id: entry.id }));
-      toggleHistory(false);
+  for (const entry of live) historyList.append(conversationRow(entry, current));
+  if (archived.length) {
+    const fold = document.createElement('li');
+    fold.className = 'archive-fold';
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.textContent = `${showArchived ? 'Hide' : 'Show'} archived (${archived.length})`;
+    toggle.addEventListener('click', () => {
+      showArchived = !showArchived;
+      showConversations(lastList, current);
     });
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'delete';
-    remove.textContent = '×';
-    remove.title = 'Delete this conversation';
-    remove.addEventListener('click', () => {
-      // Deleting cannot be undone, so the first click only arms the button.
-      if (remove.dataset.armed) return socket.send(JSON.stringify({ type: 'delete', id: entry.id }));
-      remove.dataset.armed = '1';
-      remove.textContent = 'Delete?';
-      remove.style.opacity = 1;
-      remove.style.fontSize = '12px';
-    });
-    row.append(open, remove);
-    historyList.append(row);
+    fold.append(toggle);
+    historyList.append(fold);
+    if (showArchived) for (const entry of archived) historyList.append(conversationRow(entry, current));
   }
 }
 
@@ -572,6 +687,101 @@ form.addEventListener('drop', (event) => {
   attachAll(files);
 });
 
+// ----------------------------------------------------------------- commands
+
+// Type "/" at the start of a message for Claude Code's slash commands: its
+// built-in ones that work here, and your own skills. The list comes from
+// Claude Code itself, so it is filled in once a conversation has started.
+let commandNames = [];
+let commandAt = 0;
+const commandMenu = document.getElementById('commands');
+const COMMAND_NOTES = {
+  compact: 'Summarise the conversation so far, to free up room',
+  context: 'Show what is taking up room in the conversation',
+  usage: 'Show how much of your plan you have used',
+  mcp: 'Show the tools that are connected',
+  agents: 'List the helpers Claude can start',
+};
+
+function matchingCommands() {
+  const typed = /^\/([\w:-]*)$/.exec(input.value);
+  if (!typed) return null;
+  const q = typed[1].toLowerCase();
+  const starts = commandNames.filter((name) => name.toLowerCase().startsWith(q));
+  const contains = commandNames.filter((name) => !name.toLowerCase().startsWith(q) && name.toLowerCase().includes(q));
+  // The ones with a note are the everyday ones; show them first when nothing is typed yet.
+  const order = q ? [...starts, ...contains] : [...commandNames.filter((n) => COMMAND_NOTES[n]), ...commandNames.filter((n) => !COMMAND_NOTES[n])];
+  return order.slice(0, 40);
+}
+
+function showCommands() {
+  const list = matchingCommands();
+  commandMenu.replaceChildren();
+  if (!list) {
+    commandMenu.hidden = true;
+    return;
+  }
+  commandMenu.hidden = false;
+  if (!list.length) {
+    const none = document.createElement('li');
+    none.className = 'none';
+    none.textContent = commandNames.length ? 'No command by that name' : 'The commands appear once a conversation has started. Send a message first.';
+    commandMenu.append(none);
+    return;
+  }
+  commandAt = Math.min(commandAt, list.length - 1);
+  list.forEach((name, i) => {
+    const item = document.createElement('li');
+    if (i === commandAt) item.className = 'at';
+    const label = document.createElement('b');
+    label.textContent = '/' + name;
+    item.append(label);
+    if (COMMAND_NOTES[name]) {
+      const note = document.createElement('span');
+      note.textContent = COMMAND_NOTES[name];
+      item.append(note);
+    }
+    item.addEventListener('mousedown', (event) => {
+      event.preventDefault(); // keep the typing place in the box
+      pickCommand(name);
+    });
+    commandMenu.append(item);
+  });
+  commandMenu.querySelector('.at')?.scrollIntoView({ block: 'nearest' });
+}
+
+function pickCommand(name) {
+  input.value = `/${name} `;
+  commandAt = 0;
+  input.focus();
+  resize();
+}
+
+/** Keys while the menu is open. Returns true if the key was used. */
+function commandKey(event) {
+  const list = commandMenu.hidden ? null : matchingCommands();
+  if (!list || !list.length) {
+    if (event.key === 'Escape' && !commandMenu.hidden) commandMenu.hidden = true;
+    return false;
+  }
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    commandAt = (commandAt + (event.key === 'ArrowDown' ? 1 : list.length - 1)) % list.length;
+    showCommands();
+  } else if (event.key === 'Enter' || event.key === 'Tab') {
+    // Enter on an exact, complete name sends it; otherwise it completes the name.
+    if (event.key === 'Enter' && input.value === '/' + list[commandAt]) return false;
+    pickCommand(list[commandAt]);
+  } else if (event.key === 'Escape') {
+    commandMenu.hidden = true;
+  } else {
+    commandAt = 0;
+    return false;
+  }
+  event.preventDefault();
+  return true;
+}
+input.addEventListener('blur', () => setTimeout(() => (commandMenu.hidden = true), 150));
+
 // ------------------------------------------------------------------- actions
 
 function send(text) {
@@ -595,6 +805,7 @@ form.addEventListener('submit', (event) => {
 });
 
 input.addEventListener('keydown', (event) => {
+  if (commandKey(event)) return;
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
     event.preventDefault();
     if (!busy) form.requestSubmit();
@@ -602,6 +813,7 @@ input.addEventListener('keydown', (event) => {
 });
 
 function resize() {
+  showCommands();
   input.style.height = 'auto';
   input.style.height = input.scrollHeight + 'px';
   refreshAction();

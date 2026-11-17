@@ -74,6 +74,8 @@ async function panel(token, seat = '') {
     if (e.type === 'delta') p.items.get(e.id).text += e.text;
     if (e.type === 'update') Object.assign(p.items.get(e.id) ?? {}, e.patch);
     if (e.type === 'settings') p.settings = e.settings;
+    if (Array.isArray(e.commands)) p.commands = e.commands;
+    if (e.type === 'commands') p.commands = e.list;
     if (e.status) {
       p.status = e.status;
       p.phases.add(e.status.phase);
@@ -190,6 +192,46 @@ try {
   check('refusing opens nothing', ![...b.items.values()].some((i) => i.type === 'tool' && i.name === 'mcp__history__open_plain_browser' && i.state === 'done'), [...b.items.values()].slice(-3));
 
   // A permission question in one window is announced in the others.
+  // Slash commands: the list comes from Claude Code, and a command's answer shows in the chat.
+  check('the panel is told which slash commands exist', Array.isArray(b.commands) && b.commands.includes('context') && !b.commands.includes('clear') && !b.commands.includes('model'), b.commands);
+  await c.tell({ type: 'reset' });
+  await c.say('/context');
+  check('a slash command runs and its answer is shown', /Context Usage/i.test(c.text()) && ![...c.items.values()].some((i) => i.type === 'error'), [...c.items.values()].slice(-3));
+
+  // A helper (subagent): its progress shows under the step that started it.
+  await c.tell({ type: 'reset' });
+  await c.say('Start one helper (a general-purpose subagent) and have it work out 17 times 23. Then tell me its answer.');
+  // The helper may be left working in the background; Claude then picks up by itself when it reports.
+  for (const end = Date.now() + 120000; Date.now() < end && !(/391/.test(c.text()) && !c.busy); await sleep(400));
+  const helperStep = [...c.items.values()].find((i) => i.type === 'tool' && i.helper);
+  check('a helper shows under the step that started it', !!helperStep && /^Helper: /.test(helperStep.label) && helperStep.helper.state === 'done' && helperStep.state === 'done' && /391/.test(c.text()), [helperStep, c.text().slice(-80)]);
+  await c.tell({ type: 'reset' });
+
+  // Rename and archive, from History.
+  await b.tell({ type: 'rename', id: a.id, title: '  Apples   to thirty ' });
+  check('a conversation can be renamed', b.list?.find((e) => e.id === a.id)?.title === 'Apples to thirty', b.list);
+  await b.tell({ type: 'archive', id: a.id, archived: true });
+  check('and archived, which keeps it', b.list?.find((e) => e.id === a.id)?.archived === true, b.list);
+  await b.tell({ type: 'archive', id: a.id, archived: false });
+  await b.tell({ type: 'rename', id: a.id, title: '' });
+  check('an empty name goes back to the first message', /^Write the numbers/.test(b.list?.find((e) => e.id === a.id)?.title ?? ''), b.list);
+
+  // Switching away from a conversation that is working leaves it working.
+  const busyId = b.id;
+  b.ws.send(JSON.stringify({ type: 'send', text: 'Write the numbers one to sixty as words, one per line, then the single word PLUM.' }));
+  for (const end = Date.now() + 30000; Date.now() < end && !b.busy; await sleep(100));
+  await b.tell({ type: 'reset' });
+  const movedTo = b.id;
+  await b.tell({ type: 'list' });
+  const left = b.list?.find((e) => e.id === busyId);
+  check('New chat while Claude works does not stop it', movedTo !== busyId && b.items.size === 0 && left?.working === true, [movedTo, busyId, left]);
+  for (const end = Date.now() + 120000; Date.now() < end; await sleep(500)) {
+    await b.tell({ type: 'list' });
+    if (b.list?.find((e) => e.id === busyId)?.working === false) break;
+  }
+  await b.tell({ type: 'open', id: busyId });
+  check('and it finished in the background', b.id === busyId && /PLUM/.test(b.text()), [b.id, b.text().slice(-60)]);
+
   // The look is shared by every window, and changing it does not disturb Claude.
   await b.tell({ type: 'settings', theme: 'ledger' });
   const page = await (await fetch(base + '/')).text();

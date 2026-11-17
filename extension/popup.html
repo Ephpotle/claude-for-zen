@@ -59,6 +59,9 @@
         background: none;
         cursor: pointer;
       }
+      button + button {
+        margin-top: 6px;
+      }
       button:hover {
         border-color: #d97757;
       }
@@ -100,6 +103,7 @@
     <div id="status"><span id="dot"></span><span id="label">Checking…</span></div>
     <p id="hint"></p>
     <hr />
+    <button id="sidebar" type="button">Show or hide the chat sidebar <kbd>Ctrl+Alt+C</kbd></button>
     <button id="comment" type="button">Comment on this page <kbd>Alt+Shift+C</kbd></button>
     <label><input id="explain" type="checkbox" /> Show an Explain button when I select text</label>
     <hr />

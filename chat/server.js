@@ -15,7 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { WebSocketServer } from 'ws';
 import { readFileSync } from 'node:fs';
-import { Conversation, THEMES } from './conversation.js';
+import { Conversation, THEMES, knownCommands } from './conversation.js';
 import { ask, extractHtml, EXPLAIN_MODES } from './explain.js';
 import { asDocument, createCardStore, sendCard } from '../server/cards.js';
 import { addonAllowed } from '../server/pin.js';
@@ -109,6 +109,11 @@ const activeSeat = (windowId) => {
 // toolbar button.
 function watchForQuestions(seat) {
   seat.subscribe((event) => {
+    // The list of slash commands is learned by whichever conversation starts first; every panel wants it.
+    if (event.type === 'commands') {
+      for (const other of seats) if (other !== seat) for (const fn of other.subscribers) fn(event);
+      return;
+    }
     const asked = event.type === 'item' && event.item.type === 'ask';
     if (!asked && event.type !== 'update' && event.type !== 'busy' && event.type !== 'reset') return;
     tellAddon({ type: 'attention', waiting: seats.filter((s) => s.history.some((i) => i.type === 'ask' && i.state === 'waiting')).length });
@@ -338,11 +343,37 @@ wss.on('connection', (socket, req) => {
     seat.panels++;
     seat.touched = Date.now();
     // Bring a reopened panel back to where the conversation stands.
-    send({ type: 'history', events: seat.history, busy: seat.busy, settings: seat.settings, status: { ...seat.status, now: Date.now() }, id: seat.id });
+    send({ type: 'history', events: seat.history, busy: seat.busy, settings: seat.settings, status: { ...seat.status, now: Date.now() }, commands: knownCommands(path.dirname(seat.settingsFile)), id: seat.id });
     unsubscribe = seat.subscribe(send);
   };
-  const elsewhere = (id) => seats.find((seat) => seat !== conversation && seat.id === id);
-  const sendList = () => send({ type: 'conversations', current: conversation.id, list: conversation.list().map((entry) => ({ ...entry, elsewhere: !!elsewhere(entry.id) })) });
+  /** Another seat holding this conversation: showing in a window, still working, or just kept. */
+  const holder = (id) => seats.find((seat) => seat !== conversation && seat.id === id);
+  const sendList = () => {
+    // Conversations that are working have not all been saved yet; make sure they show.
+    const listed = conversation.list();
+    for (const seat of seats) if (seat.history.length && !listed.some((entry) => entry.id === seat.id)) seat.save();
+    send({
+      type: 'conversations',
+      current: conversation.id,
+      list: conversation.list().map((entry) => {
+        const seat = seats.find((s) => s.id === entry.id);
+        return { ...entry, elsewhere: !!seat && seat !== conversation && seat.panels > 0, working: !!seat && seat.busy };
+      }),
+    });
+  };
+  /**
+   * Leave a conversation that is still working without stopping it: it carries on
+   * in its own seat, and this panel moves to an idle seat (or a new one).
+   */
+  const stepAside = () => {
+    if (!conversation.busy) return conversation;
+    const seat = seats.filter((s) => s !== conversation && s.panels === 0 && !s.busy).sort(byRecent)[0] ?? (seats.length < MAX_SEATS ? makeSeat(false) : null);
+    if (!seat) {
+      send({ type: 'notice', text: `${MAX_SEATS} conversations are working at once, which is the most there can be. Wait for one to finish, or stop one.` });
+      return null;
+    }
+    return seat;
+  };
   attach(seatFor(new URL(req.url, 'http://x').searchParams.get('seat')));
   socket.on('close', () => {
     unsubscribe();
@@ -366,7 +397,7 @@ wss.on('connection', (socket, req) => {
       const seat = conversation;
       if (seat.busy) return;
       whereIsUser().then((where) => {
-        if (!where?.tab) return seat.send(text, text, images);
+        if (!where?.tab || /^\/[\w:-]+(\s|$)/.test(text)) return seat.send(text, text, images);
         // This conversation now belongs to that window: new tabs and comment mode go there.
         seat.windowId = where.tab.windowId;
         const note = `[Browser: when this was sent the user was looking at tab ${where.tab.tabId}, “${clipText(where.tab.title, 80)}” — ${clipText(where.tab.url, 200)}, in window ${where.tab.windowId}${where.windows > 1 ? ` (${where.windows} windows are open)` : ''}${where.tab.incognito ? ', a private window' : ''}.]`;
@@ -374,7 +405,18 @@ wss.on('connection', (socket, req) => {
       });
     }
     else if (msg.type === 'stop') conversation.stop();
-    else if (msg.type === 'reset') conversation.reset();
+    else if (msg.type === 'reset') {
+      // New chat while Claude is working: the work carries on in the background.
+      const seat = stepAside();
+      if (!seat) return;
+      if (seat !== conversation) {
+        seat.reset();
+        attach(seat);
+        send({ type: 'notice', text: 'The other conversation is still working. You will find it under History.' });
+      } else {
+        conversation.reset();
+      }
+    }
     else if (msg.type === 'settings') {
       // Settings are shared by every window.
       if (conversation.configure(msg)) for (const seat of seats) if (seat !== conversation) seat.adopt(conversation.settings);
@@ -386,12 +428,22 @@ wss.on('connection', (socket, req) => {
     } else if (msg.type === 'list') sendList();
     else if (msg.type === 'open' && /^[0-9a-f]{16}$/.test(msg.id)) {
       // A conversation that is open in another window is joined there, not opened twice.
-      const other = elsewhere(msg.id);
-      if (other) attach(other);
-      else conversation.open(msg.id);
+      const other = holder(msg.id);
+      if (other) return attach(other);
+      // Switching away from a conversation that is still working leaves it working.
+      const seat = stepAside();
+      if (!seat) return;
+      seat.open(msg.id);
+      if (seat !== conversation) attach(seat);
     } else if (msg.type === 'delete' && /^[0-9a-f]{16}$/.test(msg.id)) {
-      if (elsewhere(msg.id)) send({ type: 'notice', text: 'That conversation is open in another window. Close it there first.' });
-      else conversation.remove(msg.id);
+      const other = holder(msg.id);
+      if (other && other.panels > 0) send({ type: 'notice', text: 'That conversation is open in another window. Close it there first.' });
+      else if ((other || conversation).id === msg.id && (other || conversation).busy) send({ type: 'notice', text: 'That conversation is still working. Stop it first.' });
+      else (other || conversation).remove(msg.id);
+      sendList();
+    } else if ((msg.type === 'rename' || msg.type === 'archive') && /^[0-9a-f]{16}$/.test(msg.id)) {
+      const changes = msg.type === 'rename' ? { title: String(msg.title ?? '') } : { archived: msg.archived === true };
+      (seats.find((seat) => seat.id === msg.id) || conversation).amend(msg.id, changes);
       sendList();
     }
     else if (msg.type === 'answer' && typeof msg.id === 'string') conversation.answer(msg.id, msg.allow === true);

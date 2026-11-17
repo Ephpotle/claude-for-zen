@@ -8,6 +8,13 @@ browser.runtime.sendMessage({ type: 'status' }).then(({ sessions }) => {
     : 'Connects by itself within a few seconds of a Claude Code session or the chat panel starting.';
 });
 
+// The add-on's own chat sidebar. This has to run straight from the click:
+// the browser only lets a sidebar be opened in answer to a user's action.
+document.getElementById('sidebar').addEventListener('click', () => {
+  browser.sidebarAction.toggle();
+  window.close();
+});
+
 document.getElementById('comment').addEventListener('click', async () => {
   await browser.runtime.sendMessage({ type: 'comment_mode' });
   window.close();

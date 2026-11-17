@@ -147,19 +147,66 @@ header button[aria-expanded='true'] {
   box-shadow: inset 2px 0 0 var(--accent);
   font-weight: 600;
 }
-#history .delete {
+#history .acts {
   flex: none;
-  padding: 0 12px;
-  color: var(--soft);
-  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding-right: 8px;
   opacity: 0;
 }
-#history li:hover .delete,
-#history .delete:focus-visible {
+#history li:hover .acts,
+#history .acts:focus-within {
   opacity: 1;
 }
-#history .delete:hover {
+#history .act {
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  border-radius: 5px;
+  color: var(--soft);
+  font-size: 15px;
+}
+#history .act:hover {
+  color: var(--ink);
+  background: var(--surface);
+}
+#history .delete:hover,
+#history .delete.armed {
   color: var(--danger);
+}
+#history .delete.armed {
+  font-size: 12px;
+}
+#history .working {
+  color: var(--accent);
+}
+#history .rename {
+  flex: 1;
+  min-width: 0;
+  margin: 5px 10px 5px 12px;
+  padding: 4px 7px;
+  font: inherit;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+}
+#history .archive-fold {
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+}
+#history .archive-fold:hover {
+  background: none;
+}
+#history .archive-fold button {
+  padding: 7px 14px;
+  color: var(--soft);
+}
+#history .archive-fold button:hover {
+  color: var(--ink);
 }
 #history p {
   margin: 0;
@@ -538,6 +585,21 @@ header button[aria-expanded='true'] {
   background: none;
   padding: 0;
 }
+.text table {
+  border-collapse: collapse;
+  margin: 0 0 9px;
+  font-size: 0.93em;
+}
+.text th,
+.text td {
+  padding: 3px 9px 3px 0;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line, rgba(128, 128, 128, 0.3));
+}
+.text th {
+  font-weight: 600;
+}
 .text h3 {
   margin: 12px 0 5px;
   font-size: 14px;
@@ -700,6 +762,95 @@ figure iframe {
   padding: 6px 14px;
   font-size: 12.5px;
   color: var(--danger);
+}
+
+/* A helper's own steps, under the step that started it */
+.helper {
+  margin-top: 3px;
+}
+.helper summary {
+  cursor: pointer;
+  color: var(--soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.helper summary:hover {
+  color: var(--ink);
+}
+.helper ol {
+  list-style: none;
+  margin: 4px 0 2px;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--line);
+  display: grid;
+  gap: 3px;
+}
+.helper li {
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+.helper li::before {
+  display: none;
+}
+.helper li.failed {
+  color: var(--danger);
+}
+.helper li.running {
+  color: var(--ink);
+}
+
+/* Slash commands: a short list above the message box */
+#commands {
+  flex: none;
+  list-style: none;
+  max-height: 40vh;
+  overflow-y: auto;
+  margin: 0 10px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 12.5px;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.06);
+}
+#commands[hidden] {
+  display: none;
+}
+#commands li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+#commands li.at,
+#commands li:hover {
+  background: var(--ground);
+}
+#commands li.none {
+  cursor: default;
+  color: var(--soft);
+}
+#commands li.none:hover {
+  background: none;
+}
+#commands b {
+  flex: none;
+  font-weight: 600;
+}
+#commands li.at b {
+  color: var(--accent);
+}
+#commands span {
+  min-width: 0;
+  color: var(--soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* The status line: what Claude is doing, for how long, how much it has written */

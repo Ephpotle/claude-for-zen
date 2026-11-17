@@ -45,6 +45,18 @@
         html.push(`<pre><code>${escapeHtml(body.join('\n'))}</code></pre>`);
         continue;
       }
+      // A table: consecutive lines that start with "|". The "|---|---|" line only marks the header.
+      if (/^\s*\|.*\|\s*$/.test(line)) {
+        flush();
+        const rows = [];
+        for (; i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i]); i++) rows.push(lines[i].trim().slice(1, -1).split('|').map((cell) => cell.trim()));
+        i--;
+        const ruled = rows.length > 1 && rows[1].every((cell) => /^:?-{2,}:?$/.test(cell));
+        const body = ruled ? rows.slice(2) : rows;
+        const cells = (row, tag) => `<tr>${row.map((cell) => `<${tag}>${inline(cell)}</${tag}>`).join('')}</tr>`;
+        html.push(`<table>${ruled ? `<thead>${cells(rows[0], 'th')}</thead>` : ''}<tbody>${body.map((row) => cells(row, 'td')).join('')}</tbody></table>`);
+        continue;
+      }
       const bullet = line.match(/^\s*[-*•]\s+(.*)$/);
       const numbered = line.match(/^\s*\d+[.)]\s+(.*)$/);
       const heading = line.match(/^#{1,6}\s+(.*)$/);
