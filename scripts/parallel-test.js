@@ -130,6 +130,17 @@ try {
   await c.tell({ type: 'reset' });
   check('New chat in one window leaves the other window alone', b.items.size > 0 && /PEAR/.test(b.text()), b.text().slice(-60));
 
+  // Opening a plain browser window asks in every mode, "Browser only" included; here it is refused.
+  await b.tell({ type: 'settings', access: 'browser', folder: '' });
+  const asksBefore = [...b.items.values()].filter((i) => i.type === 'ask').length;
+  b.ws.send(JSON.stringify({ type: 'send', text: 'Open a separate plain browser window at https://example.com/ for me.' }));
+  let plainAsk = null;
+  for (const end = Date.now() + 120000; Date.now() < end && !plainAsk; await sleep(300)) plainAsk = [...b.items.values()].filter((i) => i.type === 'ask')[asksBefore];
+  check('opening a plain browser window asks first, even in Browser only', !!plainAsk && /plain Zen window at example.com/.test(plainAsk.title) && /Claude cannot see or operate it/.test(plainAsk.body), plainAsk);
+  if (plainAsk) b.ws.send(JSON.stringify({ type: 'answer', id: plainAsk.id, allow: false }));
+  for (const end = Date.now() + 60000; Date.now() < end && b.busy; await sleep(300));
+  check('refusing opens nothing', ![...b.items.values()].some((i) => i.type === 'tool' && i.name === 'mcp__history__open_plain_browser' && i.state === 'done'), [...b.items.values()].slice(-3));
+
   // A permission question in one window is announced in the others.
   await b.tell({ type: 'settings', access: 'ask', folder: home });
   b.notice = null;

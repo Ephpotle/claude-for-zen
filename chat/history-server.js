@@ -7,7 +7,8 @@
 //
 //   node history-server.js <folder with the conversation files>
 
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -144,6 +145,45 @@ server.registerTool(
       return text(`Filed for the developer: ${file}`);
     } catch (err) {
       return { isError: true, content: [{ type: 'text', text: `Could not save the report: ${err.message}` }] };
+    }
+  },
+);
+
+// A second, ordinary browser window for the things the main one cannot do
+// while it is remote-controlled (sites that refuse automatable browsers) and
+// for sign-ins that should stay apart. It has its own profile, kept between
+// uses so sign-ins there last, and no add-ons: Claude cannot see or operate it.
+// The chat server always asks the user before this runs.
+server.registerTool(
+  'open_plain_browser',
+  {
+    description:
+      'Open a separate, plain Zen window at a web address, for the user to use by hand. It runs on its own profile (no logins from the main browser, no add-ons, not remote-controlled), so sites that reject an automated browser with endless "verify you are human" checks or refused sign-ins work there. You cannot see or operate that window: tell the user what to do in it. The user is asked before it opens.',
+    inputSchema: {
+      url: z.string().describe('The http(s) address to open'),
+    },
+  },
+  async ({ url }) => {
+    try {
+      const target = new URL(/^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`);
+      if (target.protocol !== 'https:' && target.protocol !== 'http:') throw new Error('Only http and https addresses can be opened.');
+      const zen = process.env.ZEN_PATH || (process.platform === 'win32' ? 'C:/Program Files/Zen Browser/zen.exe' : process.platform === 'darwin' ? '/Applications/Zen.app/Contents/MacOS/zen' : 'zen');
+      if (path.isAbsolute(zen) && !existsSync(zen)) throw new Error(`Zen was not found at ${zen}. Set ZEN_PATH to its program file.`);
+      const profile = path.join(dir, '..', '..', 'plain-profile');
+      mkdirSync(profile, { recursive: true });
+      const prefs = path.join(profile, 'user.js');
+      if (!existsSync(prefs)) writeFileSync(prefs, 'user_pref("zen.welcome-screen.seen", true);\nuser_pref("browser.shell.checkDefaultBrowser", false);\n');
+      // Without the remote-control switches and variables the main browser may have been started with.
+      const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^MOZ_(REMOTE|MARIONETTE|HEADLESS)/i.test(name)));
+      const child = spawn(zen, ['-no-remote', '-profile', profile, target.href], { env, detached: true, stdio: 'ignore' });
+      await new Promise((resolve, reject) => {
+        child.once('error', reject);
+        child.once('spawn', resolve);
+      });
+      child.unref();
+      return text(`A separate plain Zen window is opening at ${target.href}. It is a different profile: nothing from the main browser is signed in there and you cannot see or control it, so tell the user what to do in that window.`);
+    } catch (err) {
+      return { isError: true, content: [{ type: 'text', text: `Could not open a plain window: ${err.message}` }] };
     }
   },
 );

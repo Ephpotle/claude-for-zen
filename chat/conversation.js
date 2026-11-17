@@ -21,6 +21,10 @@ const IDLE_MS = 20 * 60 * 1000;
 const newId = () => randomBytes(8).toString('hex');
 import { VM, VM_PROMPT, VM_READ, describeScriptCall, describeScriptRequest, isApprovedScriptUpdate, rememberScriptApproval, userscriptServer, userscriptsAvailable } from './userscripts.js';
 
+// The panel's own tools that never need asking: looking up earlier conversations,
+// drawing in the chat, filing a report. (Opening a plain browser window does ask.)
+const PANEL_FREE = ['conversations_search', 'conversation_read', 'chat_draw', 'report_to_developer'].map((t) => 'mcp__history__' + t);
+
 export const ACCESS_MODES = ['browser', 'ask', 'full'];
 // '' means: whatever Claude Code would use by default.
 export const MODELS = ['', 'fable', 'opus', 'sonnet', 'haiku'];
@@ -36,6 +40,7 @@ How to work:
 - Earlier conversations: this conversation starts with no memory of the others. When the user refers to one ("like you did for that other site", "the conversation where we fixed X"), find it with mcp__history__conversations_search and read it with conversation_read before answering; never guess what was done. It shows each step with its input and the full code of any userscript the user was asked to allow. To repeat the work on another site, adapt it rather than copy it: selectors, hosts and addresses differ, so check each against the page in front of you.
 - Graphics: when a chart, diagram, bracket, timeline or table-like picture would explain something better than text, draw it in the chat itself with mcp__history__chat_draw (self-contained HTML or SVG, no network; it must fit the narrow panel, about 300 to 420 pixels wide, so prefer width: 100% and a viewBox). Use show_card instead only when the drawing belongs on the page next to something there. Never fall back to block-character charts.
 - If something in this panel or its tools is broken or missing and you cannot work around it, say so and file it with mcp__history__report_to_developer: what you tried, what happened, what is needed. The person developing this panel reads those reports; it does not reach them instantly, so tell the user it was filed, not that it is fixed.
+- Some things this browser cannot do for you: its internal about: pages cannot be opened or operated by an add-on, and while Zen runs with remote control on, some sites loop on "verify you are human" checks or refuse sign-in. For the second case, or when the user wants a sign-in kept apart, offer mcp__history__open_plain_browser: with their OK it opens a separate plain Zen window (own profile, no add-ons, not automatable) for them to use by hand; you cannot see into it, so give them the steps. For about: pages, tell them what to type in the address bar. Do not retry a blocked page in a loop.
 - Stay in the user's tab when the task is about it. Open a new tab only when the task needs a different page, and say that you did.
 - Prefer get_page_text or read_page to understand a page; take a screenshot when layout or visuals matter. Refs from read_page/find go stale after navigation, so re-read before acting.
 - To show the user where something is, mark it on the page with annotate instead of describing its position. Clear marks you no longer need.
@@ -118,6 +123,7 @@ const fileName = (p) => short(path.basename(String(p ?? '')) || String(p ?? ''),
 
 /** What to show while a tool runs, in the user's terms. */
 export function describeCall(name, input = {}) {
+  if (name === 'mcp__history__open_plain_browser') return `Opening a separate plain Zen window at ${site(input.url)}`;
   if (name === 'mcp__history__conversations_search') return input.query ? `Looking through earlier conversations for “${short(input.query, 40)}”` : 'Looking through earlier conversations';
   if (name === 'mcp__history__conversation_read') return 'Reading an earlier conversation';
   if (name === 'mcp__history__chat_draw') return 'Drawing in the chat';
@@ -211,6 +217,13 @@ const SWITCH_MEANING = {
 function describeRequest(tool, input = {}) {
   const script = describeScriptRequest(tool, input);
   if (script) return script;
+  if (tool === 'mcp__history__open_plain_browser') {
+    return {
+      title: `Open a separate, plain Zen window at ${site(input.url)}?`,
+      body: `${String(input.url ?? '')}
+A second Zen on its own profile: none of your logins, no add-ons, not remote-controlled. Claude cannot see or operate it.`,
+    };
+  }
   if (tool === 'Bash' || tool === 'PowerShell') return { title: 'Run this command?', body: String(input.command ?? '') };
   if (tool === 'Write') return { title: 'Write this file?', body: String(input.file_path ?? '') };
   if (tool === 'Edit') return { title: 'Edit this file?', body: String(input.file_path ?? '') };
@@ -616,14 +629,15 @@ export class Conversation {
       '--strict-mcp-config',
       '--mcp-config', this.mcpConfig,
       '--tools', access === 'browser' ? '' : COMPUTER_TOOLS,
-      '--allowedTools', ['mcp__zen', 'mcp__history', ...(spaces ? SPACES_READ : []), ...(scripts ? VM_READ : [])].join(','),
+      '--allowedTools', ['mcp__zen', ...PANEL_FREE, ...(spaces ? SPACES_READ : []), ...(scripts ? VM_READ : [])].join(','),
       '--setting-sources', 'project', // skip personal plugins and hooks
       '--disable-slash-commands',
       '--system-prompt-file', this.promptFile,
     ];
     if (spaces) args.push('--disallowedTools', SPACES_HIDDEN.join(','));
     // Permission questions come to us over the stream instead of being denied.
-    if (access !== 'browser' || spaces || scripts) args.push('--permission-prompt-tool', 'stdio');
+    // Always on: some panel tools (opening a plain browser window) ask in every mode.
+    args.push('--permission-prompt-tool', 'stdio');
     if (access !== 'browser' && folder) args.push('--add-dir', folder);
     const model = this.settings.model || this.model;
     if (model) args.push('--model', model);
