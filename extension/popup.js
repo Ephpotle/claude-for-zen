@@ -51,7 +51,7 @@ update.addEventListener('click', async () => {
     if (!res.ok) throw new Error(`the release page answered ${res.status}`);
     const releases = (await res.json()).addons?.[manifest.browser_specific_settings.gecko.id]?.updates ?? [];
     const latest = releases.reduce((best, r) => (!best || newer(r.version, best.version) ? r : best), null);
-    if (latest && newer(latest.version, manifest.version) && /^https:\/\/github\.com\//.test(latest.update_link)) {
+    if (latest && newer(latest.version, manifest.version) && latest.update_link.startsWith(feed.slice(0, feed.indexOf('/releases/') + 10) + 'download/')) {
       found = { version: latest.version, link: latest.update_link };
       say(`Version ${latest.version} is available. Zen will ask you to confirm the install.`);
       update.textContent = `Install ${latest.version}`;

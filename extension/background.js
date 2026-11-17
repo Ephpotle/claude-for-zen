@@ -512,6 +512,12 @@ const CHAT_DOWN =
 
 browser.runtime.onConnect.addListener((port) => {
   if (port.name !== 'chat') return;
+  // Only the content script in a tab's top frame may relay to the chat server:
+  // not an add-on page that a website has framed, and not a sub-frame.
+  if (!port.sender || !port.sender.tab || port.sender.frameId !== 0 || String(port.sender.url || '').startsWith(browser.runtime.getURL(''))) {
+    port.disconnect();
+    return;
+  }
   const tabId = port.sender && port.sender.tab ? port.sender.tab.id : null;
   let ws = null;
   let queue = [];

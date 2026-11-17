@@ -324,11 +324,20 @@
         window.removeEventListener('message', onMessage);
         resolve(result);
       };
+      let sent = false;
       const onMessage = (event) => {
-        const data = event.data;
-        if (!data || data.claudeForZenCard !== token || event.source !== frame.contentWindow) return;
-        if (data.ready) frame.contentWindow.postMessage({ claudeForZenCard: token, html: String(html) }, '*');
-        else finish(data);
+        // The frame only announces that it is listening. The host page can see
+        // that announcement, so it carries no secret; the token and the HTML go
+        // to the frame alone, and its answer comes back over a private port.
+        if (sent || event.source !== frame.contentWindow || !event.data || event.data.claudeForZenCard !== 'ready') return;
+        sent = true;
+        const channel = new MessageChannel();
+        channel.port1.onmessage = (reply) => {
+          channel.port1.close();
+          const result = reply.data && typeof reply.data === 'object' ? reply.data : { ok: false, error: 'the card frame gave no result' };
+          finish(result);
+        };
+        frame.contentWindow.postMessage({ claudeForZenCard: token, html: String(html) }, '*', [channel.port2]);
       };
       window.addEventListener('message', onMessage);
     });

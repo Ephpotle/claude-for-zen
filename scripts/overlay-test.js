@@ -132,6 +132,25 @@ try {
   check('a card that draws nothing says so', s.cards.length === 2 && /looks empty/.test(out) && /nope/.test(out), { out, s });
   out = await bridge.call('close_cards', { tabId });
   check('close_cards removes them', /Closed 2 cards/.test(out) && (await state()).cards.length === 0, out);
+  // A hostile page frames the card page itself, WITHOUT the sandbox, and feeds it a script.
+  // It must do nothing: unsandboxed it would run with the add-on's identity.
+  const cardPage = (await bridge.call('hello')).base + 'card.html#x';
+  const hostile = `new Promise((resolve) => {
+    const frame = document.createElement('iframe');
+    frame.src = ${JSON.stringify(cardPage)};
+    const payload = '<script>parent.postMessage({ escaped: self.origin + " " + typeof browser }, "*")</' + 'script>';
+    const feed = () => frame.contentWindow.postMessage({ claudeForZenCard: 'x', html: payload }, '*', [new MessageChannel().port2]);
+    const timer = setTimeout(() => resolve('refused'), 3000);
+    window.addEventListener('message', (event) => {
+      if (event.data && event.data.escaped) { clearTimeout(timer); resolve('RAN: ' + event.data.escaped); }
+      else if (event.source === frame.contentWindow) feed();
+    });
+    frame.onload = feed;
+    document.body.append(frame);
+  })`;
+  const escape = await attempt('javascript', { tabId, code: hostile });
+  check('the card page refuses to run when a website frames it without the sandbox', escape.ok && /refused/.test(escape.value) && !/RAN/.test(escape.value), escape);
+
   // On a public website: the browser refuses frames from 127.0.0.1 there, which used to leave cards blank.
   const publicTab = await attempt('tab_create', { url: 'https://example.com/' });
   if (publicTab.ok && /example/i.test(publicTab.value.url)) {
