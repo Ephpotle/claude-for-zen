@@ -1,0 +1,25 @@
+/* Claude for Zen: tidy the AI chat sidebar (see userChrome.css beside this
+ * file for the explanation and how to undo). The same rules are in both files
+ * because which of the two Zen applies to this sidebar document can vary. */
+
+@-moz-document url-prefix("chrome://browser/content/genai/chat.html") {
+  #header {
+    min-height: 0 !important;
+    max-height: 5px !important;
+    padding-block: 0 !important;
+    overflow: hidden !important;
+    opacity: 0;
+    transition: max-height 0.15s ease 0.25s, opacity 0.15s ease 0.25s;
+  }
+  #header:hover,
+  #header:focus-within {
+    max-height: 120px !important;
+    padding-block: revert !important;
+    overflow: visible !important;
+    opacity: 1;
+  }
+  /* Only while the Claude for Zen panel is the chosen provider. */
+  body:has(#provider option:checked:is([value*="47810"], [value*="claude.localhost"])) #footer {
+    display: none !important;
+  }
+}

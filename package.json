@@ -1,0 +1,38 @@
+{
+  "name": "claude-for-zen",
+  "version": "0.2.5",
+  "description": "Unofficial: Claude Code as a browser assistant in Zen Browser / Firefox (add-on, MCP server and chat panel)",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "claude-for-zen": "server/index.js"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "chat": "node chat/server.js",
+    "test:chat": "node scripts/chat-test.js",
+    "zen": "web-ext run --source-dir extension --firefox \"C:/Program Files/Zen Browser/zen.exe\" --pref zen.welcome-screen.seen=true --pref browser.shell.checkDefaultBrowser=false",
+    "build": "web-ext build --source-dir extension --artifacts-dir dist --filename claude-for-zen.xpi --overwrite-dest",
+    "lint": "web-ext lint --source-dir extension",
+    "test": "node scripts/smoke-test.js",
+    "test:overlay": "node scripts/overlay-test.js",
+    "release": "bash scripts/release.sh",
+    "test:spaces": "node scripts/spaces-test.js",
+    "test:userscripts": "node scripts/userscripts-test.js",
+    "test:parallel": "node scripts/parallel-test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@violentmonkey/mcp": "^0.2.0",
+    "ws": "^8.23.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "web-ext": "^10.8.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ephpotle/claude-for-zen.git"
+  }
+}

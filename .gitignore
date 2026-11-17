@@ -1,0 +1,7 @@
+node_modules/
+dist/
+web-ext-artifacts/
+scripts/last-screenshot.jpg
+.amo-upload-uuid
+scripts/*.jpg
+scripts/release.local.sh

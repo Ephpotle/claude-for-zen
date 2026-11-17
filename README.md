@@ -1,0 +1,146 @@
+# Claude for Zen
+
+> **Unofficial.** This is an independent, third-party project. It is not made, endorsed or supported by Anthropic or by the Zen Browser team. "Claude" is Anthropic's trademark; "Zen" belongs to the Zen Browser project. It is not a port of Anthropic's Claude in Chrome extension.
+
+Claude Code as a browser assistant in [Zen Browser](https://zen-browser.app) (and other Firefox-based browsers). It has two parts that work together or alone:
+
+- **Browser tools for Claude Code.** An add-on plus an MCP server: list and open tabs, read pages, click, type, fill forms, take screenshots, run JavaScript, read console and network activity, mark things on the page.
+- **A chat panel beside the page.** A sidebar shows a Claude that sees and operates the page next to it, backed by a headless Claude Code on your own machine and your own Claude subscription. Optional extras let it save userscripts through Violentmonkey, tune uBlock Origin, and arrange Zen's Spaces and split views.
+
+## Before you use it
+
+- **It gives an AI control of your browser**, including every site you are signed in to. Web pages can contain text written to mislead it. The panel asks before risky steps, but read the *Limits* section and decide what you are comfortable with.
+- **You need [Claude Code](https://claude.com/claude-code) installed and signed in.** Everything runs locally; the only thing that leaves your machine is what Claude Code itself sends to Anthropic. Check that your use fits Anthropic's terms for your plan.
+- **It was built and tested on Windows 11 with Zen.** The add-on, MCP server and chat panel are plain Node and WebExtension code and should run elsewhere; the two PowerShell helper scripts (start at login, start Zen with remote control) are Windows-only.
+- **No warranty.** Parts of it lean on browser and add-on internals (uBlock Origin's in particular) and can break when those update.
+
+## How it works
+
+```
+Claude Code ──stdio (MCP)──> server/index.js ──WebSocket on 127.0.0.1──> extension in Zen
+```
+
+- `server/` is an MCP server. Claude Code starts one per session; each takes the first free port in 47800–47809.
+- `extension/` is a Manifest V2 WebExtension. Its background page looks for those ports every few seconds, connects to every session it finds, and carries out their commands. The toolbar badge shows how many sessions are connected.
+
+## Setup
+
+Requires Node 20+ and Zen (Firefox 128+ base).
+
+```
+npm install
+npm run build        # writes dist/claude-for-zen.xpi
+```
+
+**1. Register the MCP server with Claude Code** (once):
+
+```
+claude mcp add --scope user zen -- node /full/path/to/claude-for-zen/server/index.js
+```
+
+**2. Install the extension in Zen.** Either:
+
+- *Until the next restart:* open `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…** → pick `extension/manifest.json`.
+- *Permanently:* install the latest signed build from https://github.com/Ephpotle/claude-for-zen-releases/releases/latest (or `dist/claude-for-zen-<version>-signed.xpi`) via `about:addons` → gear icon → **Install Add-on From File…**. It updates itself afterwards.
+
+Start a new Claude Code session and ask it to do something in the browser. The tools appear as `mcp__zen__*`.
+
+## Chat panel beside the page
+
+Zen's AI chat sidebar (Ctrl+Alt+X) can show a Claude that sees and operates the page next to it. The panel is a small local web page; behind it runs a headless Claude Code with only the browser tools (no file or shell access), on your Claude subscription.
+
+```
+Zen chat sidebar ──> chat/server.js (127.0.0.1:47810) ──> claude -p ──> server/index.js ──> extension
+```
+
+There are two ways to open the panel. The simplest needs no configuration: press **Ctrl+Alt+C** for the add-on's own "Claude for Zen" sidebar. The other puts it in Zen's AI chat sidebar (Ctrl+Alt+X), as set up in steps 2 and 3. Both need the chat server from step 1.
+
+1. Start the chat server: `npm run chat`. To have it start at login instead: `powershell -File scripts\autostart.ps1` (`-Remove` undoes it).
+2. In `about:config`, set `browser.ml.chat.provider` to `http://127.0.0.1:47810/`.
+3. Open the sidebar with Ctrl+Alt+X.
+
+A conversation continues until you press **New chat**, and is saved (see *History* below). Nothing appears on claude.ai; transcripts are ordinary Claude Code sessions under `~/.claude-for-zen/chat`. Claude is told to treat page text as untrusted and to ask before purchases, sending messages, deleting, or final form submissions. The page and its WebSocket only accept requests from the panel's own origin with a per-run token, so other websites cannot drive it.
+
+**Optional: hide Zen's own bars.** In Zen's AI chat sidebar, Zen draws its own header, provider menu and "Summarize page" bar around the panel. The two style sheets in `extras/zen-sidebar-tidy/` collapse them to a thin strip that slides back when you point at the top edge. This is cosmetic and nothing needs it; set the provider (step 2) first, since the provider menu is one of the things it tucks away. To use it, copy both files into the `chrome` folder of your Zen profile (create the folder if needed; `about:support` shows the profile folder), set `toolkit.legacyUserProfileCustomizations.stylesheets` to `true` in `about:config`, and restart Zen. Delete the two files to undo it.
+
+**Access** (the button in the panel header) sets what Claude may use; it is saved in `~/.claude-for-zen/settings.json` and applies from the next message:
+
+- *Browser only* (default): pages and tabs, nothing on the computer.
+- *Browser and computer, asking first*: adds shell commands and file tools. Whatever Claude Code would normally ask permission for (file changes, most commands) appears in the panel with **Allow** / **Don't allow**. Read-only commands and reads inside the working folder run without asking.
+- *Browser and computer, without asking*: the same tools, never asking. A web page that manages to trick Claude could then reach your files, so use it deliberately.
+
+**Zen itself: Spaces, tabs and uBlock** (a checkbox under Access) adds a second MCP server: a fork of Mozilla's [`firefox-devtools-mcp`](https://github.com/mozilla/firefox-devtools-mcp) with extra `zen_*` and `ublock_*` tools. **That fork is not published yet, so this option is unavailable unless you have it**; everything else works without it. It is looked for in `../zen/firefox-devtools-mcp` (built with `npm ci && npm run build:moz`); `CLAUDE_FOR_ZEN_SPACES_MCP` names another path to its `dist.moz/index.js`. It lists, creates and reorganises Spaces, folders and tabs, which an add-on cannot reach. Listing is free; creating, moving and closing always ask in the panel, even in "without asking" mode. It also shows Claude what shares the screen (`zen_view`: the tabs in a split view, a Glance preview) and opens or ends split views (`zen_split_view`, `zen_unsplit_view`) without asking, since that only rearranges what you see.
+
+The same server tunes **uBlock Origin** for the site in a tab (`ublock_*` tools, in the fork's `src/tools/ublock.ts`): it reads which hosts were blocked and allowed, flips the per-site switches (JavaScript, cosmetic filtering, large media, fonts, popups), sets per-host or per-type rules, and adds or removes site-specific lines in "My filters". Switches and rules are temporary until Zen restarts unless you ask Claude to keep them; "My filters" lines are permanent. Per-host rules only work with uBlock's "I am an advanced user" setting on, which Claude asks before changing. uBlock has no API for other programs, so these call the handlers its own popup uses; a uBlock update could break them.
+
+ It only works while Zen was started with remote control on: quit Zen and use `scripts\start-zen-control.ps1` (`-Shortcut` puts "Zen (Claude control)" on the Desktop). While Zen runs that way any local program can drive it and sites can detect that it is automatable, so start Zen normally when you don't need this. `npm run test:spaces` tests both against a throwaway headless Zen on its own ports, so it can run while your Zen is open.
+
+**Violentmonkey userscripts** (a checkbox under Access) is how a change Claude made to a page becomes permanent: Claude saves it as a userscript in [Violentmonkey](https://violentmonkey.github.io/) (2.50 or newer, installed from addons.mozilla.org as usual), and can list, fix, switch off and remove scripts. It uses Violentmonkey's own agent support through the official `@violentmonkey/mcp` server, which the chat server keeps running on 127.0.0.1:47811 (`CLAUDE_FOR_ZEN_VM_PORT`). Once each time Zen starts, Claude opens a connect page and you press **Approve** in Violentmonkey. Saving, switching and removing always ask in the panel, showing the pages the script runs on and its code. It works in a normally started Zen. `npm run test:userscripts` tests it against a throwaway Zen (set `VIOLENTMONKEY_XPI` to a downloaded copy if Violentmonkey is not installed in your profile).
+
+**Model** and **Effort** (also under Access) choose the Claude model and how hard it thinks; they apply from the next message and the conversation carries on. *Default* leaves it to Claude Code (or `CLAUDE_FOR_ZEN_MODEL`, if set). `CLAUDE_FOR_ZEN_CHAT_PORT` picks the port.
+
+## On the page
+
+- **Marks.** Claude outlines elements and highlights passages on the page (`annotate`), with labels you can dismiss.
+- **Cards.** Claude can draw a diagram or animation into a floating card (`show_card`). Generated HTML runs isolated: opaque origin, no network, none of the add-on's powers. A new card replaces Claude's earlier ones, `close_cards` removes them, and the tool reports whether the content really drew. (The HTML is handed to a sandboxed add-on page; it is not loaded from 127.0.0.1, which browsers refuse on public websites.)
+- **Drawings in the chat.** Claude can also draw a chart or diagram straight into its reply in the panel; the frame sizes itself to the drawing.
+- **Reports for the developer.** When something in the panel is broken or missing, Claude can file a report under `~/.claude-for-zen/dev-reports/` for the development session to pick up.
+- **Explain.** Select text and press the **Explain** button beside it (or Alt+Shift+E, or the right-click menu). The card offers *Simpler*, *More detail* and *Show it visually*. Uses a quick model; set `CLAUDE_FOR_ZEN_EXPLAIN_MODEL` to change it. The button can be switched off from the toolbar icon.
+- **Comment pins.** Alt+Shift+C (or the toolbar icon, or right-click → *Comment on this for Claude*), click any part of the page, type a note. It goes to the chat panel with the exact element attached, and the pin stays on the page.
+- **Named sidebar.** Ctrl+Alt+C opens the panel as the add-on's own "Claude for Zen" sidebar, instead of a custom provider address in Zen's AI chat sidebar. Both show the same conversation.
+- **Several windows.** Each window's panel has its own conversation and its own Claude, so two windows can work in parallel (up to four at once). Reopening or reloading a panel returns to its conversation. Settings under Access are shared. Each message tells Claude which tab was in front in that window when you sent it, so "this page" stays right while you move to other tabs or windows, and new tabs open in that conversation's window. A comment pinned on a page goes to the conversation of the window it was pinned in. When Claude is waiting for your OK in a window you are not looking at, the other panels say so and the toolbar button shows a "?". The Zen Spaces and uBlock tools have a single connection to the browser, so only one conversation can use them at a time. `npm run test:parallel` tests this.
+- **History.** Conversations are saved under `~/.claude-for-zen/chat/conversations` and survive restarts. *New chat* files the current one; A new conversation can look up earlier ones when you refer to them ("do what you did for that other site"): steps are saved with their inputs, except text typed into pages. *History* reopens or deletes past ones; one that is open in another window is joined rather than opened twice. `node scripts/recover-chat.js` rebuilds one from a Claude Code transcript.
+
+Explain, comments and the sidebar need the chat server running. Everything on the page is temporary and disappears on reload.
+
+## Releasing
+
+`./scripts/release.sh [version]` bumps the version, has Mozilla sign the add-on (unlisted), and publishes the signed `.xpi` plus `updates.json` to a public releases repository (`CLAUDE_FOR_ZEN_RELEASES_REPO`, default `Ephpotle/claude-for-zen-releases`). Installed copies update themselves from there. `--sign-only` skips publishing. It needs your own AMO API key in `WEB_EXT_API_KEY` / `WEB_EXT_API_SECRET`. If you fork this, also change the add-on id and `update_url` in `extension/manifest.json`, or your build will update itself from the original releases.
+
+## Tools
+
+| Tool | What it does |
+| --- | --- |
+| `tabs_list`, `tab_create`, `tab_close` | Manage tabs |
+| `navigate` | Go to a URL, or `back` / `forward` / `reload`; waits for the load |
+| `read_page` | Outline of the page with `ref` IDs for each element |
+| `find` | Find elements by text, label or CSS selector |
+| `get_page_text` | Readable text of the page |
+| `click`, `hover`, `scroll` | By `ref` or viewport coordinate |
+| `type`, `key`, `form_input` | Keyboard input and form controls |
+| `annotate`, `clear_annotations`, `show_card` | Mark things on the page; show generated HTML in a floating card |
+| `get_selection` | The text the user has selected, with context |
+| `screenshot` | JPEG of the viewport; pixels match click coordinates |
+| `javascript` | Evaluate code in the page |
+| `wait_for` | Wait for text, a selector, or a number of seconds |
+| `console_messages`, `network_requests` | What the tab logged and requested |
+| `resize_window` | Resize the browser window |
+
+## Limits worth knowing
+
+- **Input is scripted, not real.** Firefox gives extensions no debugger API, so clicks and keys are dispatched as DOM events. Nearly all sites accept them, but a site that insists on trusted events will ignore them, native `<select>` dropdowns don't open (use `form_input`), and file inputs can't be set.
+- **Unloaded tabs.** Zen unloads tabs you have not used for a while. Claude using one loads it again in the background, which takes a few seconds and can lose unsaved form input.
+- **Private windows and Zen-only views.** The add-on only sees private windows if you allow it in `about:addons`. It cannot see which Space a tab is in, which tabs share a split view, or that a page is open in Glance; the Zen Spaces tools cover those, when Zen runs from the control shortcut.
+- **Containers.** A tab Claude opens uses the same container as the page you are on, so it shares that page's logins (this is why the add-on asks for the cookies permission).
+- **Top frame only.** Content inside iframes is not outlined or clickable.
+- **Console and network capture start when Claude first uses a tab.** Reload to capture a page's startup.
+- **Strict CSP pages:** `javascript` falls back to an isolated world there — the DOM works, the page's own variables don't. The result says when this happened.
+- **Restricted pages** (`about:`, the add-ons site, reader view) can't be touched by any extension.
+- **Claude can act on any open tab**, including ones you opened, in whatever profile the extension is installed in. Sessions you are logged into are available to it.
+- **Local trust.** The server accepts WebSocket connections only from extension origins, so websites can't reach it; other programs on your machine could.
+
+## Development
+
+```
+npm run zen     # throwaway Zen profile with the extension loaded (welcome screen skipped)
+npm test        # end-to-end test: launches Zen, drives a local page through every tool
+npm run test:chat   # real conversation through the chat server (needs Zen running with the add-on)
+npm run test:overlay   # marks, cards, Explain, comment pins, history (uses its own port; your panel is left alone)
+npm run lint
+```
+
+`ZEN_PATH` overrides the browser location for `npm test`.
+
+## Licence
+
+[MIT](LICENSE). Uses [`@violentmonkey/mcp`](https://github.com/violentmonkey/mcp) (MIT) for the userscript option.

@@ -1,0 +1,567 @@
+:root {
+  --ground: #eef0ec;
+  --surface: #f8f9f6;
+  --ink: #1b211d;
+  --soft: #5f6962;
+  --line: #d3d9d1;
+  --accent: #2f6b4f;
+  --on-accent: #f8f9f6;
+  --mine: #dde6dd;
+  --danger: #a8442a;
+  --code: #e4e8e1;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #141715;
+    --surface: #1b1f1c;
+    --ink: #e4e8e2;
+    --soft: #96a098;
+    --line: #2c322d;
+    --accent: #86c7a2;
+    --on-accent: #10140f;
+    --mine: #242c26;
+    --danger: #e08a6c;
+    --code: #232824;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ground);
+  color: var(--ink);
+  font: 14px/1.55 system-ui, 'Segoe UI', sans-serif;
+  overflow-wrap: anywhere;
+}
+button,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+h1 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+h1 {
+  margin-right: auto;
+}
+header button {
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--soft);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+header button:hover,
+header button[aria-expanded='true'] {
+  color: var(--ink);
+}
+#comment {
+  display: grid;
+  place-items: center;
+  padding: 3px 5px;
+}
+#comment:hover {
+  color: var(--accent);
+}
+#notice {
+  flex: none;
+  margin: 0;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+/* The access button carries the current state when Claude can reach the computer. */
+#settings-toggle.computer {
+  color: var(--accent);
+  font-weight: 600;
+}
+#settings-toggle.full {
+  color: var(--danger);
+}
+
+#history {
+  flex: none;
+  max-height: 55vh;
+  overflow-y: auto;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 12.5px;
+}
+#history ul {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+}
+#history li {
+  display: flex;
+  align-items: stretch;
+}
+#history li button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+#history .open {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 4px 6px 14px;
+  text-align: left;
+  line-height: 1.35;
+}
+#history .open span {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#history .open small {
+  color: var(--soft);
+  font-size: 11.5px;
+}
+#history li:hover {
+  background: var(--ground);
+}
+/* The conversation on screen is marked by a rule, as in a table of contents. */
+#history li.current .open {
+  box-shadow: inset 2px 0 0 var(--accent);
+  font-weight: 600;
+}
+#history .delete {
+  flex: none;
+  padding: 0 12px;
+  color: var(--soft);
+  font-size: 15px;
+  opacity: 0;
+}
+#history li:hover .delete,
+#history .delete:focus-visible {
+  opacity: 1;
+}
+#history .delete:hover {
+  color: var(--danger);
+}
+#history p {
+  margin: 0;
+  padding: 12px 14px;
+  color: var(--soft);
+}
+
+#settings {
+  flex: none;
+  padding: 12px 14px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+#settings fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 9px;
+}
+#settings legend {
+  padding: 0;
+  margin-bottom: 9px;
+  font-weight: 600;
+}
+#spaces-row {
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
+}
+#settings input[type='checkbox'] {
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+#settings fieldset label,
+#scripts-row,
+#script-updates-row,
+#spaces-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: start;
+  cursor: pointer;
+  color: var(--soft);
+}
+#settings fieldset b,
+#scripts-row b,
+#script-updates-row b,
+#spaces-row b {
+  display: block;
+  color: var(--ink);
+  font-weight: 500;
+}
+#settings input[type='radio'] {
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+#scripts-row {
+  margin-top: 10px;
+}
+#script-updates-row {
+  margin: 8px 0 0 21px;
+}
+#script-updates-row[hidden] {
+  display: none;
+}
+#model-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
+}
+#model-row label {
+  display: grid;
+  gap: 4px;
+  color: var(--soft);
+}
+#model-row select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px;
+  min-width: 0;
+}
+#folder-row {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+  color: var(--soft);
+}
+#folder {
+  font: 12px/1.4 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  min-width: 0;
+}
+#settings-problem {
+  margin: 8px 0 0;
+  color: var(--danger);
+}
+
+/* A request for your permission */
+.ask {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 9px 11px;
+  background: var(--surface);
+}
+.ask strong {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+.ask pre {
+  margin: 0 0 9px;
+  font: 12px/1.45 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  white-space: pre-wrap;
+  max-height: 11em;
+  overflow-y: auto;
+}
+.ask div {
+  display: flex;
+  gap: 8px;
+}
+.ask button {
+  border: 0;
+  border-radius: 7px;
+  padding: 4px 12px;
+  cursor: pointer;
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.ask button.allow {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+  box-shadow: none;
+}
+.ask.settled {
+  border-left-color: var(--line);
+  color: var(--soft);
+}
+.ask em {
+  font-style: normal;
+  font-size: 12.5px;
+}
+
+#log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 14px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Empty state */
+#empty {
+  margin: auto 0;
+  padding-bottom: 12px;
+}
+#empty p {
+  margin: 0 0 14px;
+  font-size: 17px;
+  line-height: 1.35;
+  max-width: 22em;
+}
+#empty ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+#empty button {
+  border: 0;
+  background: none;
+  padding: 5px 0;
+  text-align: left;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+}
+#empty button:hover {
+  text-decoration-color: currentColor;
+}
+
+/* What you said */
+.user {
+  align-self: flex-end;
+  max-width: 88%;
+  padding: 7px 11px;
+  border-radius: 12px 12px 3px 12px;
+  background: var(--mine);
+  white-space: pre-wrap;
+}
+
+/* What Claude said: plain running text, no bubble */
+.text > :first-child {
+  margin-top: 0;
+}
+.text > :last-child {
+  margin-bottom: 0;
+}
+.text p,
+.text ul,
+.text ol,
+.text pre {
+  margin: 0 0 9px;
+}
+.text ul,
+.text ol {
+  padding-left: 20px;
+}
+.text li + li {
+  margin-top: 3px;
+}
+.text a {
+  color: var(--accent);
+}
+.text code {
+  font: 12.5px/1.45 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  background: var(--code);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.text pre {
+  background: var(--code);
+  padding: 9px 11px;
+  border-radius: 6px;
+  overflow-x: auto;
+  overflow-wrap: normal;
+}
+.text pre code {
+  background: none;
+  padding: 0;
+}
+.text h3 {
+  margin: 12px 0 5px;
+  font-size: 14px;
+}
+
+/* A drawing in the reply */
+figure {
+  margin: 0;
+}
+figcaption {
+  margin-bottom: 5px;
+  font-size: 12.5px;
+  color: var(--soft);
+}
+figure iframe {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+/* What Claude did to the page: a trail of steps down a single rule */
+.trail {
+  list-style: none;
+  margin: 0 0 0 4px;
+  padding: 1px 0 1px 15px;
+  border-left: 1px solid var(--line);
+  display: grid;
+  gap: 5px;
+  color: var(--soft);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.trail li {
+  position: relative;
+}
+.trail li::before {
+  content: '';
+  position: absolute;
+  left: -19px;
+  top: 0.45em;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--line);
+  box-shadow: 0 0 0 3px var(--ground);
+}
+.trail .done::before {
+  background: var(--soft);
+}
+.trail .running {
+  color: var(--ink);
+}
+.trail .running::before {
+  background: var(--accent);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+.trail .failed::before {
+  background: var(--danger);
+}
+.trail small {
+  display: block;
+  font-size: inherit;
+  color: var(--danger);
+}
+@keyframes pulse {
+  50% {
+    transform: scale(1.55);
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .trail .running::before {
+    animation: none;
+  }
+}
+
+.thinking {
+  color: var(--soft);
+  font-size: 12.5px;
+}
+.note {
+  color: var(--soft);
+  font-size: 12.5px;
+}
+.error {
+  color: var(--danger);
+  border-left: 2px solid var(--danger);
+  padding-left: 10px;
+}
+
+#offline {
+  flex: none;
+  margin: 0;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+#composer {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 6px 10px 10px;
+  padding: 6px 6px 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+#composer:focus-within {
+  border-color: var(--accent);
+}
+#input {
+  flex: 1;
+  min-width: 0;
+  max-height: 40vh;
+  padding: 5px 0;
+  border: 0;
+  background: none;
+  resize: none;
+  outline: none;
+  line-height: 1.45;
+}
+#input::placeholder {
+  color: var(--soft);
+}
+#action {
+  flex: none;
+  border: 0;
+  border-radius: 9px;
+  padding: 5px 13px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+#action:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+#action.stop {
+  background: none;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line);
+}

@@ -1,0 +1,48 @@
+/* Claude for Zen: tidy the AI chat sidebar.
+ *
+ * Collapses Zen's own bars around the chat panel so only the panel shows.
+ * Nothing is removed: move the mouse to the very top edge of the sidebar and
+ * the bars slide back (sidebar switcher, close button, provider menu).
+ * Ctrl+Alt+X still opens and closes the sidebar.
+ *
+ * To undo: delete this file and userContent.css next to it, then restart Zen.
+ */
+
+/* The "AI Chatbot  v  x" bar. */
+#sidebar-box[sidebarcommand="viewGenaiChatSidebar"] #sidebar-header {
+  min-height: 0 !important;
+  max-height: 5px !important;
+  padding-block: 0 !important;
+  overflow: hidden !important;
+  opacity: 0;
+  transition: max-height 0.15s ease 0.25s, opacity 0.15s ease 0.25s;
+}
+#sidebar-box[sidebarcommand="viewGenaiChatSidebar"] #sidebar-header:hover,
+#sidebar-box[sidebarcommand="viewGenaiChatSidebar"] #sidebar-header:focus-within {
+  max-height: 80px !important;
+  padding-block: revert !important;
+  opacity: 1;
+}
+
+/* The provider row and "Summarize page" bar inside the chat sidebar itself. */
+@-moz-document url-prefix("chrome://browser/content/genai/chat.html") {
+  #header {
+    min-height: 0 !important;
+    max-height: 5px !important;
+    padding-block: 0 !important;
+    overflow: hidden !important;
+    opacity: 0;
+    transition: max-height 0.15s ease 0.25s, opacity 0.15s ease 0.25s;
+  }
+  #header:hover,
+  #header:focus-within {
+    max-height: 120px !important;
+    padding-block: revert !important;
+    overflow: visible !important;
+    opacity: 1;
+  }
+  /* Only while the Claude for Zen panel is the chosen provider. */
+  body:has(#provider option:checked:is([value*="47810"], [value*="claude.localhost"])) #footer {
+    display: none !important;
+  }
+}
