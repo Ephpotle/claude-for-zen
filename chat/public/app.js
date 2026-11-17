@@ -123,8 +123,77 @@ function askBlock(el, item) {
   el.append(buttons);
 }
 
+// ------------------------------------------------------------------- steps
+
+// A run of steps is shown in full while it is the latest thing happening, and
+// folds into one line ("12 steps") once Claude has moved on. The line is a
+// button: open or close any group; a choice made by hand is left alone.
+const FOLD_FROM = 4; // shorter runs are not worth hiding
+
+function newSteps() {
+  const group = document.createElement('div');
+  group.className = 'steps';
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'steps-toggle';
+  toggle.hidden = true;
+  toggle.addEventListener('click', () => {
+    group.dataset.chosen = '1';
+    setFolded(group, !group.classList.contains('folded'));
+  });
+  const trail = document.createElement('ol');
+  trail.className = 'trail';
+  group.append(toggle, trail);
+  log.append(group);
+  return group;
+}
+
+function setFolded(group, folded) {
+  const wasNear = nearBottom();
+  group.classList.toggle('folded', folded);
+  group.querySelector('.steps-toggle').setAttribute('aria-expanded', String(!folded));
+  summarise(group);
+  keepInView(wasNear);
+}
+
+/** The one-line summary: how many steps, how many failed, and the latest one while it is folded. */
+function summarise(group) {
+  if (!group) return;
+  const steps = [...group.querySelectorAll('.trail > li')];
+  const toggle = group.querySelector('.steps-toggle');
+  toggle.hidden = steps.length < FOLD_FROM;
+  const failed = steps.filter((li) => li.classList.contains('failed')).length;
+  const running = steps.some((li) => li.classList.contains('running'));
+  const folded = group.classList.contains('folded');
+  const last = steps.at(-1);
+  toggle.replaceChildren();
+  const count = document.createElement('span');
+  count.textContent = `${steps.length} steps${running ? ' so far' : ''}`;
+  toggle.append(count);
+  if (failed) {
+    const bad = document.createElement('span');
+    bad.className = 'bad';
+    bad.textContent = `${failed} failed`;
+    toggle.append(bad);
+  }
+  if (folded && last) {
+    const latest = document.createElement('span');
+    latest.className = 'latest';
+    latest.textContent = last.firstChild?.textContent ?? '';
+    toggle.append(latest);
+  }
+  toggle.title = folded ? 'Show the steps' : 'Hide the steps';
+}
+
+/** Fold a finished group, unless it is short or the user opened it themselves. */
+function fold(group) {
+  if (!group || !group.classList || !group.classList.contains('steps') || group.dataset.chosen) return;
+  if (group.querySelectorAll('.trail > li').length >= FOLD_FROM) setFolded(group, true);
+}
+
 function addItem(item) {
   const wasNear = nearBottom();
+  if (item.type !== 'tool') fold(log.lastElementChild);
   empty.hidden = true;
   setThinking(false);
   let el;
@@ -134,16 +203,13 @@ function addItem(item) {
     askBlock(el, item);
     log.append(el);
   } else if (item.type === 'tool') {
-    // Consecutive steps share one trail.
-    let trail = log.lastElementChild;
-    if (!trail || !trail.classList.contains('trail')) {
-      trail = document.createElement('ol');
-      trail.className = 'trail';
-      log.append(trail);
-    }
+    // Consecutive steps share one group, which folds into a single line.
+    let group = log.lastElementChild;
+    if (!group || !group.classList.contains('steps')) group = newSteps();
     el = document.createElement('li');
     toolLine(el, item);
-    trail.append(el);
+    group.querySelector('.trail').append(el);
+    summarise(group);
   } else if (item.type === 'figure') {
     // A drawing from Claude, in a frame that can run its own scripts but reach nothing else.
     el = document.createElement('figure');
@@ -219,7 +285,10 @@ function onEvent(event) {
     const item = items.get(event.id);
     if (!el || !item) return;
     Object.assign(item, event.patch);
-    if (item.type === 'tool') toolLine(el, item);
+    if (item.type === 'tool') {
+      toolLine(el, item);
+      summarise(el.closest('.steps'));
+    }
     else if (item.type === 'ask') askBlock(el, item);
   } else if (event.type === 'busy') {
     setBusy(event.busy);
@@ -411,7 +480,7 @@ function setBusy(value) {
   action.textContent = busy ? 'Stop' : 'Send';
   action.classList.toggle('stop', busy);
   refreshAction();
-  if (!busy) setThinking(false);
+  if (!busy) fold(log.lastElementChild);
 }
 
 function refreshAction() {

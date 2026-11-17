@@ -560,6 +560,70 @@ figure iframe {
   background: var(--surface);
 }
 
+/* A run of steps folds into one line once Claude has moved on */
+.steps {
+  display: grid;
+  gap: 5px;
+}
+.steps-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--soft);
+  text-align: left;
+  cursor: pointer;
+}
+.steps-toggle[hidden] {
+  display: none;
+}
+.steps-toggle::before {
+  content: '';
+  flex: none;
+  align-self: center;
+  width: 0;
+  height: 0;
+  margin: 0 2px 0 3px;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 0.12s;
+}
+.steps-toggle[aria-expanded='true']::before {
+  transform: rotate(90deg);
+}
+.steps-toggle:hover {
+  color: var(--ink);
+}
+.steps-toggle span {
+  flex: none;
+  white-space: nowrap;
+}
+.steps-toggle .bad {
+  color: var(--danger);
+}
+.steps-toggle .latest {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.75;
+}
+.steps.folded .trail {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .steps-toggle::before {
+    transition: none;
+  }
+}
+
 /* What Claude did to the page: a trail of steps down a single rule */
 .trail {
   list-style: none;

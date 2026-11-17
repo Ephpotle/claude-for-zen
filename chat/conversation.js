@@ -193,7 +193,7 @@ export function describeCall(name, input = {}) {
 const SELF_DESCRIBING = new Set(['click', 'hover', 'key', 'scroll', 'wait_for', 'tab_close']);
 const PAST = {
   Looking: 'Looked', Opening: 'Opened', Going: 'Went', Reading: 'Read', Taking: 'Took', Running: 'Ran',
-  Listing: 'Listed', Creating: 'Created', Moving: 'Moved', Turning: 'Turned', Setting: 'Set', Keeping: 'Kept', Undoing: 'Undid', Adding: 'Added', Removing: 'Removed', Saving: 'Saved', Drawing: 'Drew', Updating: 'Updated', Using: 'Used',
+  Listing: 'Listed', Creating: 'Created', Moving: 'Moved', Turning: 'Turned', Setting: 'Set', Keeping: 'Kept', Undoing: 'Undid', Adding: 'Added', Removing: 'Removed', Saving: 'Saved', Drawing: 'Drew', Filling: 'Filled', Typing: 'Typed', Pressing: 'Pressed', Updating: 'Updated', Using: 'Used',
   Checking: 'Checked', Resizing: 'Resized', Reloading: 'Reloaded', Closing: 'Closed', Waiting: 'Waited',
   Scrolling: 'Scrolled', Writing: 'Wrote', Editing: 'Edited', Finding: 'Found', Searching: 'Searched', Pointing: 'Pointed', Clearing: 'Cleared', Showing: 'Showed',
 };
