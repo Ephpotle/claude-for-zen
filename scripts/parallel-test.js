@@ -223,6 +223,7 @@ try {
   // The helper may be left working in the background; Claude then picks up by itself when it reports.
   for (const end = Date.now() + 120000; Date.now() < end && !(/391/.test(c.text()) && !c.busy); await sleep(400));
   const helperStep = [...c.items.values()].find((i) => i.type === 'tool' && i.helper);
+  check('only the step that starts a helper is shown as one', ![...c.items.values()].some((i) => i.helper && !/^(Task|Agent)$/.test(i.name)), [...c.items.values()].filter((i) => i.helper).map((i) => i.name));
   check('a helper shows under the step that started it', !!helperStep && /^Helper: /.test(helperStep.label) && helperStep.helper.state === 'done' && helperStep.state === 'done' && /391/.test(c.text()), [helperStep, c.text().slice(-80)]);
   await c.tell({ type: 'reset' });
 

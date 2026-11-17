@@ -123,6 +123,9 @@ const count = (ids) => {
 };
 const fileName = (p) => short(path.basename(String(p ?? '')) || String(p ?? ''), 50);
 
+/** The tool that starts a helper (a subagent). */
+const startsHelper = (name) => name === 'Task' || name === 'Agent';
+
 /** What to show while a tool runs, in the user's terms. */
 export function describeCall(name, input = {}) {
   if (name === 'Task' || name === 'Agent') return `Helper: ${short(input.description || input.prompt || 'a sub-task', 70)}`;
@@ -418,6 +421,9 @@ export class Conversation {
     for (const item of this.history) {
       if (item.type === 'tool' && item.state === 'running') item.state = 'stopped';
       if (item.type === 'ask' && item.state === 'waiting') item.state = 'cancelled';
+      // An earlier version marked ordinary steps as helpers by mistake.
+      if (item.helper && !startsHelper(item.name)) delete item.helper;
+      else if (item.helper?.state === 'running') item.helper = { ...item.helper, state: 'stopped' };
     }
     return true;
   }
@@ -778,6 +784,9 @@ export class Conversation {
     child.stdin.on('error', () => {});
     child.on('error', (err) => {
       if (this.child === child) this.child = null;
+      // Its helpers went with it.
+      for (const item of this.history) if (item.helper?.state === 'running') this.update(item, { helper: { ...item.helper, state: 'stopped' } });
+      if (!this.busy && this.status.phase === 'helper') this.setStatus({ phase: 'stopped', ended: Date.now(), detail: '' });
       this.fail(
         err.code === 'ENOENT'
           ? 'Claude Code was not found. Install it, or set CLAUDE_FOR_ZEN_CLAUDE to the path of the claude program.'
@@ -861,14 +870,17 @@ export class Conversation {
   /** The step in the trail that started a helper, by the id of that tool call. */
   helperItem(toolUseId) {
     const item = this.history.find((i) => i.type === 'tool' && i.toolUseId === toolUseId);
-    if (item && !item.helper) item.helper = { steps: [], tokens: 0, tools: 0, state: 'running' };
+    // Only the tool that starts a helper has one. Other tools (a browser tool reporting its
+    // progress, say) also send messages tied to their call, and those are not helpers.
+    if (!item || !startsHelper(item.name)) return null;
+    if (!item.helper) item.helper = { steps: [], tokens: 0, tools: 0, state: 'running' };
     return item;
   }
 
   /** Start, progress and end of a helper, as Claude Code reports them. */
   helperTask(msg) {
     if (msg.task_type && msg.task_type !== 'local_agent') return; // a shell command in the background, say
-    const item = this.history.find((i) => i.type === 'tool' && i.toolUseId === msg.tool_use_id && (i.helper || msg.subtype === 'task_started'));
+    const item = this.history.find((i) => i.type === 'tool' && i.toolUseId === msg.tool_use_id && startsHelper(i.name) && (i.helper || msg.subtype === 'task_started'));
     if (!item) return;
     const helper = { ...(item.helper || { steps: [], tokens: 0, tools: 0, state: 'running' }) };
     if (msg.subtype === 'task_started') helper.kind = msg.subagent_type || '';
