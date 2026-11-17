@@ -16,8 +16,9 @@ import path from 'node:path';
 import { WebSocketServer } from 'ws';
 import { readFileSync } from 'node:fs';
 import { Conversation } from './conversation.js';
-import { ask, extractHtml } from './explain.js';
+import { ask, extractHtml, EXPLAIN_MODES } from './explain.js';
 import { asDocument, createCardStore, sendCard } from '../server/cards.js';
+import { addonAllowed } from '../server/pin.js';
 
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.CLAUDE_FOR_ZEN_CHAT_PORT) || 47810;
@@ -110,7 +111,7 @@ function watchForQuestions(seat) {
   seat.subscribe((event) => {
     const asked = event.type === 'item' && event.item.type === 'ask';
     if (!asked && event.type !== 'update' && event.type !== 'busy' && event.type !== 'reset') return;
-    tellAddon({ type: 'attention', waiting: seats.filter((s) => s.asks.size).length });
+    tellAddon({ type: 'attention', waiting: seats.filter((s) => s.history.some((i) => i.type === 'ask' && i.state === 'waiting')).length });
     if (!asked) return;
     const text = seat.panels ? 'A conversation in another window is waiting for your OK.' : 'A conversation with no open panel is waiting for your OK. Open it from History.';
     for (const other of seats) {
@@ -125,11 +126,14 @@ function watchForQuestions(seat) {
 const explainModel = process.env.CLAUDE_FOR_ZEN_EXPLAIN_MODEL || 'sonnet';
 const cards = createCardStore();
 
+// The panel's own files. CLAUDE_FOR_ZEN_PUBLIC points at another folder with
+// index.html, app.js and app.css, for trying out a different look.
+const PUBLIC = process.env.CLAUDE_FOR_ZEN_PUBLIC || path.join(here, 'public');
 const FILES = {
-  '/markdown.js': ['../../extension/markdown.js', 'text/javascript'],
-  '/app.js': ['app.js', 'text/javascript'],
-  '/app.css': ['app.css', 'text/css'],
-  '/icon.svg': ['../../extension/icons/icon.svg', 'image/svg+xml'],
+  '/markdown.js': [path.join(root, 'extension', 'markdown.js'), 'text/javascript'],
+  '/app.js': [path.join(PUBLIC, 'app.js'), 'text/javascript'],
+  '/app.css': [path.join(PUBLIC, 'app.css'), 'text/css'],
+  '/icon.svg': [path.join(root, 'extension', 'icons', 'icon.svg'), 'image/svg+xml'],
 };
 
 const server = http.createServer(async (req, res) => {
@@ -147,7 +151,13 @@ const server = http.createServer(async (req, res) => {
     else sendCard(res, asDocument(html) + FIGURE_SIZER);
     return;
   }
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  let url;
+  try {
+    url = new URL(req.url, `http://${req.headers.host}`);
+  } catch {
+    res.writeHead(400).end('Bad request');
+    return;
+  }
   if (url.pathname === '/ping') {
     // Lets the add-on check the server is here before opening a WebSocket.
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify({ app: 'claude-for-zen-chat' }));
@@ -160,11 +170,11 @@ const server = http.createServer(async (req, res) => {
   };
   try {
     if (url.pathname === '/') {
-      const html = (await readFile(path.join(here, 'public', 'index.html'), 'utf8')).replace('__TOKEN__', token);
+      const html = (await readFile(path.join(PUBLIC, 'index.html'), 'utf8')).replace('__TOKEN__', token);
       res.writeHead(200, { ...headers, 'content-type': 'text/html; charset=utf-8' }).end(html);
     } else if (FILES[url.pathname]) {
       const [file, type] = FILES[url.pathname];
-      const body = await readFile(path.join(here, 'public', file));
+      const body = await readFile(file);
       res.writeHead(200, { ...headers, 'content-type': `${type}; charset=utf-8` }).end(body);
     } else {
       res.writeHead(404, headers).end('Not found');
@@ -186,11 +196,16 @@ server.on('upgrade', (req, socket, head) => {
     socket.destroy();
   };
   if (!HOSTS.has(req.headers.host)) return refuse();
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  let url;
+  try {
+    url = new URL(req.url, `http://${req.headers.host}`);
+  } catch {
+    return refuse();
+  }
   const origin = req.headers.origin;
   if (url.pathname === '/ws' && ORIGINS.has(origin) && url.searchParams.get('token') === token) {
     wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
-  } else if (url.pathname === '/ext' && typeof origin === 'string' && origin.startsWith('moz-extension://')) {
+  } else if (url.pathname === '/ext' && addonAllowed(origin)) {
     extWss.handleUpgrade(req, socket, head, (ws) => extWss.emit('connection', ws, req));
   } else {
     refuse();
@@ -246,6 +261,7 @@ extWss.on('connection', (socket) => {
     } catch {
       return;
     }
+    if (!msg || typeof msg !== 'object') return;
     if (msg.type === 'control') {
       controls.add(socket);
       return;
@@ -263,14 +279,21 @@ extWss.on('connection', (socket) => {
     if (msg.type !== 'explain' || typeof msg.selection !== 'string' || !msg.selection.trim()) return;
     job?.cancel();
     const visual = msg.mode === 'visual';
-    const mine = (job = ask({
-      kind: visual ? 'visual' : 'explain',
-      mode: visual ? 'default' : msg.mode,
-      request: msg,
-      workDir,
-      model: explainModel,
-      onDelta: visual ? null : (text) => send({ type: 'delta', text }),
-    }));
+    let mine;
+    try {
+      mine = job = ask({
+        kind: visual ? 'visual' : 'explain',
+        // Only the known modes: this value becomes part of a file name.
+        mode: !visual && EXPLAIN_MODES.includes(msg.mode) ? msg.mode : 'default',
+        request: msg,
+        workDir,
+        model: explainModel,
+        onDelta: visual ? null : (text) => send({ type: 'delta', text }),
+      });
+    } catch (err) {
+      send({ type: 'error', text: `Could not start Claude Code: ${err.message}` });
+      return;
+    }
     try {
       const reply = await mine.done;
       if (job !== mine) return;
@@ -318,6 +341,7 @@ wss.on('connection', (socket, req) => {
     } catch {
       return;
     }
+    if (!msg || typeof msg !== 'object') return;
     conversation.touched = Date.now();
     if (msg.type === 'touch') return;
     if (msg.type === 'send' && typeof msg.text === 'string' && msg.text.trim()) {
@@ -376,6 +400,10 @@ if (!process.env.CLAUDE_FOR_ZEN_CHAT_PORT) {
   plain.on('error', () => console.error(`Port 80 is taken; use http://${NAME}:${PORT}/ instead of http://${NAME}/`));
   plain.listen(80, HOST, () => console.error(`Also at http://${NAME}/`));
 }
+
+// One bad request or a failed child process must not end every conversation.
+process.on('unhandledRejection', (err) => console.error('Unhandled rejection:', err));
+process.on('uncaughtException', (err) => console.error('Uncaught exception:', err));
 
 const shutdown = () => {
   for (const seat of seats) seat.dispose();

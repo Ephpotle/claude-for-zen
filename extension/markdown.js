@@ -3,20 +3,26 @@
 // Shared by the chat panel page and the on-page explain card.
 
 (() => {
-  const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
   function inline(text) {
-    const code = [];
-    let out = escapeHtml(text).replace(/`([^`\n]+)`/g, (_, c) => {
-      code.push(c);
-      return `\u0000${code.length - 1}\u0000`;
-    });
+    // Finished pieces of HTML (code spans, link tags) are set aside as
+    // placeholders, so that no later pass can match inside them. Without this,
+    // the bare-address pass could match a second address inside a link's href
+    // and break out of the attribute.
+    const held = [];
+    const hold = (html) => {
+      held.push(html);
+      return `\u0000${held.length - 1}\u0000`;
+    };
+    const open = (url) => hold(`<a href="${url}" target="_blank" rel="noreferrer">`);
+    let out = escapeHtml(text.replace(/\u0000/g, '')).replace(/`([^`\n]+)`/g, (_, c) => hold(`<code>${c}</code>`));
     out = out
+      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)\u0000]+)\)/g, (_, label, url) => open(url) + label + hold('</a>'))
+      .replace(/(^|[\s(])(https?:\/\/[^\s<)\u0000]+[^\s<).,;:!?\u0000])/g, (_, before, url) => before + open(url) + url + hold('</a>'))
       .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/(^|[\s(])\*([^*\s][^*\n]*)\*(?=[\s).,;:!?]|$)/g, '$1<em>$2</em>')
-      .replace(/\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
-      .replace(/(^|[\s(])(https?:\/\/[^\s<)]+[^\s<).,;:!?])/g, '$1<a href="$2" target="_blank" rel="noreferrer">$2</a>');
-    return out.replace(/\u0000(\d+)\u0000/g, (_, i) => `<code>${code[i]}</code>`);
+      .replace(/(^|[\s(])\*([^*\s][^*\n]*)\*(?=[\s).,;:!?]|$)/g, '$1<em>$2</em>');
+    return out.replace(/\u0000(\d+)\u0000/g, (_, i) => held[i]);
   }
 
   function markdown(source) {

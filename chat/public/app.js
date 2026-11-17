@@ -403,9 +403,12 @@ function connect() {
     const event = JSON.parse(message.data);
     onEvent(event);
     if (event.type === 'history' && pending) {
+      // Put it in the box; never send it. Any website can make a link to this page with
+      // a ?q= of its choosing, so sending would let it speak to Claude as the user.
       const prompt = pending;
       pending = null;
-      if (!send(prompt)) input.value = prompt;
+      input.value = prompt;
+      input.focus();
       resize();
     }
   };

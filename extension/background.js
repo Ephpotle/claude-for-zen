@@ -193,6 +193,38 @@ function normalizeUrl(url) {
   return 'https://' + url;
 }
 
+// Claude must never operate Claude for Zen's own pages. The chat panel is where
+// the user grants access and answers permission prompts: a Claude that could
+// click there (after being misled by a web page) could switch itself to
+// "without asking" or press Allow on its own requests. The same goes for the
+// other local servers. This is enforced here, not left to instructions.
+function isOwnPage(url) {
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.protocol === 'moz-extension:') return u.href.startsWith(browser.runtime.getURL(''));
+  if (u.protocol !== 'http:' && u.protocol !== 'https:' && u.protocol !== 'ws:' && u.protocol !== 'wss:') return false;
+  const host = u.hostname.toLowerCase();
+  if (host === 'claude.localhost' || host.endsWith('.claude.localhost')) return true;
+  const local = host === '127.0.0.1' || host === 'localhost' || host === '[::1]' || host.endsWith('.localhost');
+  const port = Number(u.port) || (u.protocol === 'https:' ? 443 : 80);
+  return local && port >= 47800 && port <= 47829;
+}
+const OWN_PAGE = "That is one of Claude for Zen's own pages (the chat panel or a local server). Claude cannot open or operate those; only the user can.";
+/** Throws if the tab is showing one of our own pages. */
+async function guard(tabId) {
+  const tab = await browser.tabs.get(tabId);
+  if (isOwnPage(tab.url) || (tab.pendingUrl && isOwnPage(tab.pendingUrl))) throw new Error(OWN_PAGE);
+  return tab;
+}
+function guardUrl(url) {
+  if (isOwnPage(url)) throw new Error(OWN_PAGE);
+  return url;
+}
+
 function unscriptable(tab) {
   return new Error(
     `Zen does not let extensions touch this page (${tab.url || 'restricted page'}). Navigate the tab to a normal web page first.`,
@@ -201,6 +233,7 @@ function unscriptable(tab) {
 
 /** Send a command to the tab's content script, injecting it if needed. */
 async function inPage(tabId, action, params = {}, { claim = true } = {}) {
+  await guard(tabId);
   const tab = await wake(tabId);
   const message = { action, params };
   let response;
@@ -279,7 +312,7 @@ const handlers = {
   },
 
   async tab_create({ url, active = true, windowId, plain = false }) {
-    const options = { url: url ? normalizeUrl(url) : undefined, active };
+    const options = { url: url ? guardUrl(normalizeUrl(url)) : undefined, active };
     // Zen Spaces can each have their own container (separate logins). Open the
     // tab in the same container as the page the user is on, so it is signed in
     // the same way.
@@ -325,6 +358,8 @@ const handlers = {
   },
 
   async navigate({ tabId, url }) {
+    await guard(tabId);
+    if (!['back', 'forward', 'reload'].includes(url)) guardUrl(normalizeUrl(url));
     claimed.add(tabId);
     const { outcome } = await withLoad(async () => {
       if (url === 'back') await browser.tabs.goBack(tabId);
@@ -377,6 +412,7 @@ const handlers = {
   },
 
   async screenshot({ tabId }) {
+    await guard(tabId);
     const tab = await browser.tabs.get(tabId);
     const options = { format: 'jpeg', quality: 80, scale: 1 };
     let dataUrl;
@@ -414,16 +450,13 @@ const handlers = {
   async javascript({ tabId, code }) {
     const result = await inPage(tabId, 'javascript', { code });
     if (!result.blockedByCsp) return result.value;
-    // The page's Content-Security-Policy forbids eval. Run in the extension's
-    // isolated world instead: full DOM access, but not the page's JS variables.
-    const [value] = await browser.tabs.executeScript(tabId, { code, frameId: 0 });
-    let shown;
-    try {
-      shown = value === undefined ? 'undefined' : JSON.stringify(value, null, 2);
-    } catch {
-      shown = String(value);
-    }
-    return `${shown}\n\n(Note: this page's CSP blocks eval, so the code ran in an isolated world — the DOM is available, the page's own JS variables are not.)`;
+    // The page's Content-Security-Policy forbids eval. The code used to be run
+    // in the add-on's content-script world instead, but there it has powers a
+    // page script does not (the add-on's messaging, requests that skip the
+    // page's cross-origin rules), which is too much to hand to generated code.
+    throw new Error(
+      "This page's security policy (CSP) forbids running script, so `javascript` is not available here. Use read_page, find, get_page_text, click, type and form_input instead.",
+    );
   },
 
   async console_messages({ tabId, pattern, onlyErrors, limit, clear }) {

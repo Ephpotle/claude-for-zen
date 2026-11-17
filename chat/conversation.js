@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 const IDLE_MS = 20 * 60 * 1000;
 const newId = () => randomBytes(8).toString('hex');
-import { VM, VM_PROMPT, VM_READ, describeScriptCall, describeScriptRequest, isApprovedScriptUpdate, rememberScriptApproval, userscriptServer, userscriptsAvailable } from './userscripts.js';
+import { VM, VM_PROMPT, VM_READ, describeScriptCall, describeScriptRequest, isApprovedScriptUpdate, noteScriptSaved, rememberScriptApproval, userscriptServer, userscriptsAvailable } from './userscripts.js';
 
 // The panel's own tools that never need asking: looking up earlier conversations,
 // drawing in the chat, filing a report. (Opening a plain browser window does ask.)
@@ -160,7 +160,7 @@ export function describeCall(name, input = {}) {
     case 'find': return `Looking for “${short(input.query, 40)}”`;
     case 'click': return 'Clicking';
     case 'hover': return 'Pointing at an element';
-    case 'type': return `Typing “${short(input.text, 40)}”`;
+    case 'type': return `Typing ${String(input.text ?? '').length} characters`;
     case 'key': return `Pressing ${input.key}`;
     case 'form_input': return 'Filling in a field';
     case 'scroll': return input.direction ? `Scrolling ${input.direction}` : 'Scrolling to an element';
@@ -188,7 +188,7 @@ export function describeCall(name, input = {}) {
 
 // These tools answer with a sentence about what they touched ("Clicked button
 // "Send" at (39, 132)."); that reads better than the generic label.
-const SELF_DESCRIBING = new Set(['click', 'hover', 'type', 'key', 'form_input', 'scroll', 'wait_for', 'tab_close']);
+const SELF_DESCRIBING = new Set(['click', 'hover', 'key', 'scroll', 'wait_for', 'tab_close']);
 const PAST = {
   Looking: 'Looked', Opening: 'Opened', Going: 'Went', Reading: 'Read', Taking: 'Took', Running: 'Ran',
   Listing: 'Listed', Creating: 'Created', Moving: 'Moved', Turning: 'Turned', Setting: 'Set', Keeping: 'Kept', Undoing: 'Undid', Adding: 'Added', Removing: 'Removed', Saving: 'Saved', Drawing: 'Drew', Updating: 'Updated', Using: 'Used',
@@ -284,6 +284,7 @@ export class Conversation {
     this.currentText = null; // text item being streamed
     this.idleTimer = null;
     this.asks = new Map(); // item id -> { item, requestId, input }
+    this.scriptCode = new Map(); // tool use id -> userscript code being saved, until its result arrives
 
     this.settingsFile = path.join(workDir, '..', 'settings.json');
     this.settings = { access: 'browser', folder: '', spaces: false, scripts: false, scriptUpdates: false, model: '', effort: '' };
@@ -550,8 +551,9 @@ export class Conversation {
     try {
       writeFileSync(this.settingsFile, JSON.stringify(next, null, 2));
     } catch {}
-    // The running process was started with the old settings.
-    if (this.busy) this.stop();
+    // The running process was started with the old settings. A task in progress
+    // finishes on them; the new ones apply from the next message.
+    if (this.busy) this.restartWhenIdle = true;
     else this.kill();
     return true;
   }
@@ -616,7 +618,7 @@ export class Conversation {
         // Attach to the Zen that is already running; never launch (and later kill) one.
         // A short idle timeout frees Marionette's single session for other programs.
         args: [SPACES_ENTRY, '--connect-existing', '--marionette-port', process.env.CLAUDE_FOR_ZEN_MARIONETTE_PORT || '2828', '--tool-preset', 'zen', '--disable-network-body-collection', '--idle-timeout', '300'],
-        env: { NODE_ENV: 'production' }, // do not pick up a stray .env
+        env: { NODE_ENV: 'production', ZEN_TOOLS_FIXED_OUTPUT: '1' }, // do not pick up a stray .env
       };
     }
     writeFileSync(this.mcpConfig, JSON.stringify({ mcpServers: servers }));
@@ -732,7 +734,9 @@ export class Conversation {
         this.currentText = null;
         // The input is kept (not shown) so a later conversation can look up exactly what was done.
         // What was typed into pages is left out: it can be a password.
-        const keep = /__(type|form_input|key)$/.test(block.name) ? undefined : short(JSON.stringify(block.input ?? {}), 4000);
+        // The Violentmonkey connect address carries its access token; that is not kept either.
+        const keep = /__(type|form_input|key)$/.test(block.name) ? undefined : short(JSON.stringify(block.input ?? {}), 4000).replace(/([?&]token=)[0-9a-zA-Z_-]+/g, '$1…');
+        if (block.name === VM + 'scripts_write') this.scriptCode.set(block.id, String(block.input?.code ?? ''));
         if (block.name === 'mcp__history__chat_draw' && typeof block.input?.html === 'string') {
           // A drawing for the chat itself: the panel shows it in a locked-down frame.
           this.add({ type: 'tool', toolUseId: block.id, name: block.name, label: 'Drawing in the chat', state: 'running' });
@@ -751,6 +755,10 @@ export class Conversation {
         const item = this.history.find((i) => i.type === 'tool' && i.toolUseId === block.tool_use_id);
         if (!item) continue;
         const failed = !!block.is_error;
+        if (this.scriptCode.has(block.tool_use_id)) {
+          if (!failed) noteScriptSaved(path.dirname(this.settingsFile), this.scriptCode.get(block.tool_use_id), resultText(block.content));
+          this.scriptCode.delete(block.tool_use_id);
+        }
         this.update(item, { state: failed ? 'failed' : 'done', ...describeResult(item.name, item.label, resultText(block.content), failed) });
       }
       return;

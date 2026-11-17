@@ -266,23 +266,15 @@ try {
   for (const end = Date.now() + 150000; Date.now() < end && !turnEnded; await sleep(500));
   panel.close();
   await sleep(500);
-  // Open the panel page itself in a tab: with no other panel open it shows that conversation.
-  const chatTab = await bridge.call('tab_create', { url: CHAT + '/' });
-  await sleep(3000);
-  const drawn = await attempt('javascript', { tabId: chatTab.tabId, code: '(() => { const f = document.querySelector("figure iframe"); return f ? JSON.stringify({ src: f.getAttribute("src"), sandbox: f.getAttribute("sandbox"), height: f.offsetHeight, width: f.offsetWidth }) : "none"; })()' });
-  check('the drawing appears in the panel', drawn.ok && /figure.{1,3}[0-9a-f]{16}.{1,3}i\d+/.test(drawn.value) && /allow-scripts/.test(drawn.value) && /height.{1,4}[1-9]/.test(drawn.value), drawn);
-  const chatShot = await bridge.call('screenshot', { tabId: chatTab.tabId });
-  writeFileSync(path.join(shots, 'overlay-figure.jpg'), Buffer.from(chatShot.data, 'base64'));
-  await bridge.call('tab_close', { tabId: chatTab.tabId });
+  // Claude's tools must refuse the panel page itself: it is where access is granted
+  // and prompts are answered. (That the drawing renders there is checked by eye from
+  // scripts/overlay-figure.jpg when the look changes, and its serving by the parallel test.)
+  const ownPanel = await attempt('tab_create', { url: CHAT + '/' });
+  check('the browser tools refuse to open the chat panel', !ownPanel.ok && /own pages/.test(ownPanel.value), ownPanel);
 
-  // --- named sidebar ------------------------------------------------------------
-  const hello = await bridge.call('hello');
-  const side = await bridge.call('tab_create', { url: hello.base + 'sidebar.html' });
-  await sleep(2500);
-  const sideShot = await bridge.call('screenshot', { tabId: side.tabId });
-  writeFileSync(path.join(shots, 'overlay-sidebar.jpg'), Buffer.from(sideShot.data, 'base64'));
-  check('sidebar page opens', side.title === 'Claude for Zen', side);
-  await bridge.call('tab_close', { tabId: side.tabId });
+  // --- the add-on's own pages -----------------------------------------------------
+  const ownSidebar = await attempt('tab_create', { url: (await bridge.call('hello')).base + 'sidebar.html' });
+  check("the browser tools refuse the add-on's own pages", !ownSidebar.ok && /own pages/.test(ownSidebar.value), ownSidebar);
 
   // --- strict CSP page ------------------------------------------------------
   await bridge.call('navigate', { tabId, url: base + '/strict' });

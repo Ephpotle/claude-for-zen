@@ -45,8 +45,13 @@ function prompt({ selection, context, title, url }) {
  * Run one request. onDelta receives text as it streams.
  * Returns { done: Promise<string>, cancel() }.
  */
+/** The modes a request may name. Anything else is treated as 'default'. */
+export const EXPLAIN_MODES = ['default', 'simpler', 'detail'];
+
 export function ask({ kind, mode = 'default', request, workDir, model, onDelta }) {
   const system = kind === 'visual' ? VISUAL : `${EXPLAIN}${MODES[mode] ? `\n\nFor this request: ${MODES[mode]}` : ''}`;
+  if (!EXPLAIN_MODES.includes(mode)) mode = 'default';
+  if (kind !== 'visual') kind = 'explain';
   const promptFile = path.join(workDir, `explain-${kind}-${mode}.txt`);
   writeFileSync(promptFile, system);
   const args = [

@@ -7,6 +7,7 @@
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
 import { createCardStore } from './cards.js';
+import { addonAllowed } from './pin.js';
 
 export const HOST = '127.0.0.1';
 export const BASE_PORT = Number(process.env.CLAUDE_FOR_ZEN_PORT) || 47800;
@@ -170,7 +171,8 @@ function startServer(port, cards) {
       maxPayload: 64 * 1024 * 1024,
       // Only a browser extension may connect. Web pages cannot forge Origin,
       // so a site you visit can't pose as the browser.
-      verifyClient: ({ origin }) => typeof origin === 'string' && origin.startsWith('moz-extension://'),
+      // Web pages cannot send an extension origin, and of the installed add-ons only ours is accepted.
+      verifyClient: ({ origin }) => addonAllowed(origin),
     });
     wss.on('error', () => {});
     httpServer.once('error', reject);

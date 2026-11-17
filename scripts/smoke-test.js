@@ -191,9 +191,21 @@ try {
   await call('navigate', { tabId, url: base + '/strict' });
   const stale = await call('click', { tabId, ref: countRef });
   check('stale ref gives a clear error', stale.isError && stale.text.includes('no longer'), stale.text);
+  // On a page whose policy forbids eval, the code is NOT run in the add-on's own world as a fallback:
+  // there it would have the add-on's powers. It is refused, with a pointer to the other tools.
   js = await call('javascript', { tabId, code: 'document.title' });
-  check('javascript works under strict CSP', !js.isError && js.text.includes('Smoke page'), js.text);
-  console.log('      (strict CSP result: ' + js.text.replace(/\s+/g, ' ').slice(0, 140) + ')');
+  check('javascript is refused under strict CSP rather than run with add-on powers', js.isError && /forbids running script/.test(js.text), js.text);
+  const stillReads = await call('get_page_text', { tabId });
+  check('the page can still be read under strict CSP', !stillReads.isError && stillReads.text.includes('The very bottom'), stillReads.text);
+
+  // Claude must not be able to open or operate Claude for Zen's own pages (the chat panel
+  // is where access is granted and permission prompts are answered).
+  const ownNew = await call('tab_create', { url: 'http://127.0.0.1:47810/' });
+  const ownNav = await call('navigate', { tabId, url: 'http://claude.localhost/?q=hello' });
+  const ownVm = await call('navigate', { tabId, url: 'http://localhost:47811/mcp' });
+  check('own pages cannot be opened or navigated to', [ownNew, ownNav, ownVm].every((r) => r.isError && /own pages/.test(r.text)), [ownNew.text, ownNav.text, ownVm.text].join(' | '));
+  const otherLocal = await call('navigate', { tabId, url: base + '/' });
+  check('other local pages still work', !otherLocal.isError && otherLocal.text.includes('Smoke page'), otherLocal.text);
 
   const restricted = await call('navigate', { tabId, url: 'about:config' });
   check('privileged URL is refused', restricted.isError, restricted.text);

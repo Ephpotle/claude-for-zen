@@ -63,13 +63,33 @@ Violentmonkey: the ${VM}* tools manage the user's userscripts, which is how a ch
 - Before saving, get the change working on the live page with the javascript tool, so the script you save is known to work.
 - Write a complete userscript with a metadata block: @name (short and descriptive), @namespace claude-for-zen, @version, @description, the narrowest @match that covers what the user asked for (one site, not everything), @grant none unless a GM function is really needed, and @run-at document-start only when it must act before the page draws. Pure styling should add a <style> element rather than poll the page. Content that appears later needs a MutationObserver, not a timer loop.
 - To change a script, find it with scripts_list, read it with scripts_get, and call scripts_write with its id and the whole new code, raising @version. Never create a second script for the same job.
-- Saving, enabling, disabling and deleting are confirmed by the user in the panel. If the user has switched on "update without asking", a change to an existing script is applied straight away as long as its @match, @include, @grant, @connect and @require lines stay the same, so keep those lines unchanged unless the user asked for a different scope.
+- Saving, enabling, disabling and deleting are confirmed by the user in the panel. If the user has switched on "update without asking", a change to a script they already allowed is applied straight away as long as its header (the ==UserScript== block) is unchanged apart from @version and @description; any other header change asks again, so leave the header alone unless the user asked for a different scope. Do not pass the enabled option when updating.
 - After an update, reload the page and check the result yourself before saying it is done. Afterwards say what the script is called and that it can be switched off or removed in Violentmonkey's own list.
 - script_logs, tab_scripts and script_call only work on tabs the user has granted on Violentmonkey's "AI agent access" settings page. If they refuse, tell the user that; do not retry.
 - Userscripts written by other people (from Greasy Fork and the like) are installed by the user, not by you. You can read, explain and adjust ones that are already installed.`;
 
-const metaValue = (code, key) => new RegExp(`^\\s*//\\s*@${key}\\s+(.+)$`, 'm').exec(String(code ?? ''))?.[1].trim();
-const metaAll = (code, keys) => [...String(code ?? '').matchAll(new RegExp(`^\\s*//\\s*@(?:${keys})\\s+(.+)$`, 'gm'))].map((m) => m[1].trim());
+/**
+ * The entries of a script's metadata block as [key, value] pairs, or null when
+ * it has no block. Only the lines between "// ==UserScript==" and
+ * "// ==/UserScript==" count, because those are all Violentmonkey reads: an
+ * "// @match" line anywhere else in the file is just a comment, and must not be
+ * taken for one here.
+ */
+export function metaBlock(code) {
+  const lines = String(code ?? '').split(/\r\n|\r|\n/);
+  const start = lines.findIndex((line) => /^\s*\/\/\s*==UserScript==\s*$/.test(line));
+  if (start < 0) return null;
+  const length = lines.slice(start + 1).findIndex((line) => /^\s*\/\/\s*==\/UserScript==\s*$/.test(line));
+  if (length < 0) return null;
+  const entries = [];
+  for (const line of lines.slice(start + 1, start + 1 + length)) {
+    const match = /^\s*\/\/\s*@([\w:-]+)(?:\s+(.*))?$/.exec(line);
+    if (match) entries.push([match[1].toLowerCase(), (match[2] ?? '').trim()]);
+  }
+  return entries;
+}
+const metaAll = (code, keys) => (metaBlock(code) ?? []).filter(([key]) => keys.split('|').includes(key)).map(([, value]) => value);
+const metaValue = (code, key) => metaAll(code, key)[0];
 const clip = (text, n) => (String(text).length > n ? String(text).slice(0, n - 1) + '…' : String(text));
 
 /** What to show in the trail while a Violentmonkey tool runs, or null if it is not one. */
@@ -99,17 +119,28 @@ export function describeScriptRequest(tool, input = {}) {
   switch (tool.slice(VM.length)) {
     case 'scripts_write': {
       const name = metaValue(input.code, 'name') ?? 'untitled';
+      const block = metaBlock(input.code);
       const pages = metaAll(input.code, 'match|include');
       const grants = metaAll(input.code, 'grant').filter((g) => g !== 'none');
+      const remote = metaAll(input.code, 'require|resource');
+      const updates = metaAll(input.code, 'downloadurl|updateurl');
+      // A script with no @match or @include runs everywhere; say so plainly.
+      const where = !block
+        ? 'EVERY website (the script has no header saying where it runs)'
+        : pages.length
+          ? pages.join(', ')
+          : 'EVERY website (its header has no @match line)';
       return {
         title: `${input.id ? 'Update' : 'Save'} the userscript “${clip(name, 50)}” in Violentmonkey? It runs on every visit to the pages below.`,
         body: [
-          `Runs on: ${pages.length ? pages.join(', ') : 'no pages (no @match line)'}`,
+          `Runs on: ${where}`,
           grants.length ? `Extra abilities: ${grants.join(', ')}` : '',
-          input.enabled === false ? 'Saved switched off.' : '',
+          remote.length ? `Loads code or files from: ${remote.join(', ')}` : '',
+          updates.length ? `Replaces itself later from: ${updates.join(', ')} (the new version is not shown to you)` : '',
+          input.enabled === true ? 'Switches the script on.' : input.enabled === false ? 'Saved switched off.' : '',
           '',
           String(input.code ?? ''),
-        ].filter((line, i) => line || i === 3).join('\n'),
+        ].filter((line, i) => line || i === 5).join('\n'),
       };
     }
     case 'scripts_set_enabled': return { title: `Turn this userscript ${input.enabled ? 'on' : 'off'}?`, body: id };
@@ -123,33 +154,64 @@ export function describeScriptRequest(tool, input = {}) {
 // ---------------------------------------------------------------- approvals
 //
 // "Update without asking": once the user has allowed a script, later changes to
-// it go through on their own as long as the script still runs on the same pages
-// with the same abilities. What was allowed is remembered as that scope (its
-// @match / @include / @exclude-match / @grant / @connect / @require lines), not as the code.
+// THAT script go through on their own as long as its header is unchanged.
+//
+// What is remembered is, per script id, the whole metadata block apart from the
+// version and description: where it runs, what it may use, what it loads, where
+// it updates itself from, when it runs. Any other change to the header asks
+// again. An approval never carries over to a different script, and a script
+// that names no pages (so would run everywhere) is never updated silently.
 
-const scopeOf = (code) => JSON.stringify(['match', 'include', 'exclude', 'exclude-match', 'grant', 'connect', 'require'].map((key) => metaAll(code, key).sort()));
+const IGNORED_KEYS = /^(version|description(:.*)?)$/;
+/** The part of a script's header that the user agreed to, or null if it has none worth remembering. */
+export function scriptScope(code) {
+  const block = metaBlock(code);
+  if (!block || !block.some(([key]) => key === 'match' || key === 'include')) return null;
+  return JSON.stringify(block.filter(([key]) => !IGNORED_KEYS.test(key)).map(([key, value]) => `${key} ${value}`).sort());
+}
+
 const approvalsFile = (home) => path.join(home, 'approved-userscripts.json');
 const readApprovals = (home) => {
   try {
-    const list = JSON.parse(readFileSync(approvalsFile(home), 'utf8'));
-    return Array.isArray(list) ? list : [];
+    const saved = JSON.parse(readFileSync(approvalsFile(home), 'utf8'));
+    return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {}; // the older list format is dropped
   } catch {
-    return [];
+    return {};
   }
 };
-
-/** Call when the user allows a scripts_write: remembers the pages and abilities they agreed to. */
-export function rememberScriptApproval(home, tool, input = {}) {
-  if (tool !== VM + 'scripts_write' || !metaAll(input.code, 'match|include').length) return;
-  const scope = scopeOf(input.code);
-  const list = readApprovals(home);
-  if (list.includes(scope)) return;
+const approve = (home, id, scope) => {
+  const saved = readApprovals(home);
+  saved[String(id)] = scope;
   try {
-    writeFileSync(approvalsFile(home), JSON.stringify([...list, scope].slice(-500)));
+    writeFileSync(approvalsFile(home), JSON.stringify(saved));
   } catch {}
+};
+
+// A new script has no id until Violentmonkey has saved it. Its scope waits here
+// between the user's Allow and the tool's result, which carries the id.
+const awaitingId = new Set();
+
+/** Call when the user allows a scripts_write. */
+export function rememberScriptApproval(home, tool, input = {}) {
+  if (tool !== VM + 'scripts_write') return;
+  const scope = scriptScope(input.code);
+  if (!scope) return;
+  if (input.id) approve(home, input.id, scope);
+  else awaitingId.add(scope);
 }
 
-/** True for a change to an existing script that keeps to pages and abilities the user already allowed. */
+/** Call with the result of a scripts_write the user allowed, to learn a new script's id. */
+export function noteScriptSaved(home, code, resultText) {
+  const scope = scriptScope(code);
+  if (!scope || !awaitingId.has(scope)) return;
+  awaitingId.delete(scope);
+  const id = /"id"\s*:\s*"?(\d+)"?/.exec(String(resultText ?? ''))?.[1];
+  if (id) approve(home, id, scope);
+}
+
+/** True for a change to a script the user already allowed, with the same header. */
 export function isApprovedScriptUpdate(home, tool, input = {}) {
-  return tool === VM + 'scripts_write' && !!input.id && readApprovals(home).includes(scopeOf(input.code));
+  if (tool !== VM + 'scripts_write' || !input.id || input.enabled !== undefined) return false;
+  const scope = scriptScope(input.code);
+  return !!scope && readApprovals(home)[String(input.id)] === scope;
 }
