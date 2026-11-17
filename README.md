@@ -14,6 +14,7 @@ Claude Code as a browser assistant in [Zen Browser](https://zen-browser.app) (an
 - **It gives an AI control of your browser**, including every site you are signed in to. Web pages can contain text written to mislead it. The panel asks before risky steps, but read the *Limits* section and decide what you are comfortable with.
 - **You need [Claude Code](https://claude.com/claude-code) installed and signed in.** Everything runs locally; the only thing that leaves your machine is what Claude Code itself sends to Anthropic. Check that your use fits Anthropic's terms for your plan.
 - **It was built and tested on Windows 11 with Zen.** The add-on, MCP server and chat panel are plain Node and WebExtension code and should run elsewhere; the two PowerShell helper scripts (start at login, start Zen with remote control) are Windows-only.
+- **It is young.** Most of it was written in a single day in November 2026, largely by an AI coding agent under the author's direction. It has had one independent security review, which found serious problems; those were fixed, but the fixes have not been reviewed in turn, and some gaps remain (see *Security*). Treat it as an experiment, not a finished product.
 - **No warranty.** Parts of it lean on browser and add-on internals (uBlock Origin's in particular) and can break when those update.
 
 ## How it works
@@ -171,6 +172,18 @@ npm run lint
 ```
 
 `ZEN_PATH` overrides the browser location for `npm test`.
+
+## Support and contributing
+
+This is a personal project. There is no promise of support, of a response to issues, or of future releases; it may change or stop at any time.
+
+Bug reports and pull requests are welcome all the same. Before sending a change:
+
+- The tests are not run automatically. They need a local Zen and a signed-in Claude Code, and the ones that talk to Claude use your subscription: `npm test` (browser tools), `npm run test:overlay` (everything drawn on pages), `npm run test:parallel` (the chat server), and `npm run test:spaces` / `npm run test:userscripts` for the optional parts.
+- The tests start their own throwaway browser and their own chat server on other ports, and do not touch a browser or panel you have open.
+- Anything that changes what Claude may do without asking belongs in the *Security* section too.
+
+The signed builds are in [claude-for-zen-releases](https://github.com/Ephpotle/claude-for-zen-releases); each one is tagged here as `v<version>` on the commit it was built from.
 
 ## Licence
 

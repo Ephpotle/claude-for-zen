@@ -92,5 +92,7 @@ gh release create "v$NEW" --repo "$REPO" --title "Claude for Zen $NEW" --notes "
   "$STAGE/$ASSET" "$STAGE/updates.json"
 rm -rf "$STAGE"
 
+# Mark the source this build came from, once the change is committed:
+#   git tag v$NEW && git push origin v$NEW
 echo "Published v$NEW. Installed copies pick it up at their next update check"
 echo "(about:addons > gear > Check for Updates to do it now)."
