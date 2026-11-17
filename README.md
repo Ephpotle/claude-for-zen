@@ -7,6 +7,8 @@ Claude Code as a browser assistant in [Zen Browser](https://zen-browser.app) (an
 - **Browser tools for Claude Code.** An add-on plus an MCP server: list and open tabs, read pages, click, type, fill forms, take screenshots, run JavaScript, read console and network activity, mark things on the page.
 - **A chat panel beside the page.** A sidebar shows a Claude that sees and operates the page next to it, backed by a headless Claude Code on your own machine and your own Claude subscription. Optional extras let it save userscripts through Violentmonkey, tune uBlock Origin, and arrange Zen's Spaces and split views.
 
+![How Claude for Zen fits together: the chat panel, add-on and optional Violentmonkey and Zen tools in the browser each talk to a local server; Claude Code uses those servers and is the only part that talks to Anthropic.](docs/architecture.svg)
+
 ## Before you use it
 
 - **It gives an AI control of your browser**, including every site you are signed in to. Web pages can contain text written to mislead it. The panel asks before risky steps, but read the *Limits* section and decide what you are comfortable with.

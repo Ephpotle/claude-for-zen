@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 500" width="1100" height="500" role="img" aria-labelledby="t d" font-family="system-ui, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title id="t">How Claude for Zen fits together</title>
+  <desc id="d">Three groups. In Zen Browser: the chat panel, web pages, the add-on, and optionally Violentmonkey and Zen's own Spaces, split view and uBlock Origin. On your computer, reachable only locally: a chat server, the browser tools MCP server, two optional MCP servers, and Claude Code. Outside: Anthropic. The chat panel talks to the chat server, which starts Claude Code. Claude Code uses the MCP servers, each of which talks to its counterpart in the browser. Only Claude Code talks to Anthropic.</desc>
+  <style>
+    .bg { fill: #f8f9f6; }
+    .lane { fill: #eef0ec; }
+    .box { fill: #ffffff; stroke: #c9d0c7; stroke-width: 1.2; }
+    .opt { stroke-dasharray: 5 4; }
+    .core { fill: #2f6b4f; stroke: none; }
+    .h { fill: #1b211d; font-size: 21px; font-weight: 650; }
+    .lane-t { fill: #5f6962; font-size: 13px; font-weight: 600; }
+    .t { fill: #1b211d; font-size: 14.5px; font-weight: 650; }
+    .s { fill: #5f6962; font-size: 11.5px; }
+    .on-core { fill: #f8f9f6; }
+    .on-core-s { fill: #d5e6dc; font-size: 11.5px; }
+    .l { fill: #2f6b4f; font-size: 11.5px; font-weight: 600; text-anchor: middle; }
+    .a { stroke: #2f6b4f; stroke-width: 1.6; fill: none; }
+    .a-opt { stroke-dasharray: 5 4; }
+    .head { fill: #2f6b4f; }
+    .foot { fill: #5f6962; font-size: 12.5px; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #141715; }
+      .lane { fill: #1b1f1c; }
+      .box { fill: #232824; stroke: #39413a; }
+      .core { fill: #86c7a2; }
+      .h, .t { fill: #e4e8e2; }
+      .lane-t, .s, .foot { fill: #96a098; }
+      .on-core { fill: #10140f; }
+      .on-core-s { fill: #23402f; }
+      .l { fill: #86c7a2; }
+      .a { stroke: #86c7a2; }
+      .head { fill: #86c7a2; }
+    }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0 0 L10 5 L0 10 z" />
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1100" height="500" rx="14" />
+  <text class="h" x="28" y="40">How Claude for Zen fits together</text>
+
+  <!-- lanes -->
+  <rect class="lane" x="20" y="58" width="350" height="372" rx="12" />
+  <text class="lane-t" x="36" y="82">In Zen Browser</text>
+  <rect class="lane" x="470" y="58" width="420" height="372" rx="12" />
+  <text class="lane-t" x="486" y="82">On your computer, local only</text>
+  <rect class="lane" x="960" y="58" width="120" height="372" rx="12" />
+  <text class="lane-t" x="976" y="82">Outside</text>
+
+  <!-- browser side -->
+  <rect class="box" x="36" y="96" width="318" height="56" rx="9" />
+  <text class="t" x="50" y="120">Chat panel</text>
+  <text class="s" x="50" y="138">sidebar: chat, Allow prompts, history, drawings</text>
+
+  <rect class="box" x="36" y="180" width="140" height="56" rx="9" />
+  <text class="t" x="50" y="204">Web pages</text>
+  <text class="s" x="50" y="222">marks, cards, pins</text>
+
+  <rect class="box" x="214" y="180" width="140" height="56" rx="9" />
+  <text class="t" x="228" y="204">Add-on</text>
+  <text class="s" x="228" y="222">carries out the tools</text>
+
+  <rect class="box opt" x="36" y="264" width="318" height="56" rx="9" />
+  <text class="t" x="50" y="288">Violentmonkey</text>
+  <text class="s" x="50" y="306">keeps page changes as userscripts</text>
+
+  <rect class="box opt" x="36" y="348" width="318" height="56" rx="9" />
+  <text class="t" x="50" y="372">Zen itself</text>
+  <text class="s" x="50" y="390">Spaces, split view, uBlock Origin</text>
+
+  <!-- local side -->
+  <rect class="box" x="486" y="96" width="190" height="56" rx="9" />
+  <text class="t" x="500" y="120">Chat server</text>
+  <text class="s" x="500" y="138">chat/server.js · port 47810</text>
+
+  <rect class="box" x="486" y="180" width="190" height="56" rx="9" />
+  <text class="t" x="500" y="204">Browser tools</text>
+  <text class="s" x="500" y="222">server/index.js · 47800–47809</text>
+
+  <rect class="box opt" x="486" y="264" width="190" height="56" rx="9" />
+  <text class="t" x="500" y="288">Userscript tools</text>
+  <text class="s" x="500" y="306">@violentmonkey/mcp · 47811</text>
+
+  <rect class="box opt" x="486" y="348" width="190" height="56" rx="9" />
+  <text class="t" x="500" y="372">Zen tools</text>
+  <text class="s" x="500" y="390">firefox-devtools-mcp fork</text>
+
+  <rect class="core" x="730" y="96" width="144" height="308" rx="11" />
+  <text class="t on-core" x="746" y="124">Claude Code</text>
+  <text class="on-core-s" x="746" y="146">Started by the chat</text>
+  <text class="on-core-s" x="746" y="162">server for the panel,</text>
+  <text class="on-core-s" x="746" y="178">or your own session</text>
+  <text class="on-core-s" x="746" y="194">in a terminal.</text>
+  <text class="on-core-s" x="746" y="226">Decides which tools</text>
+  <text class="on-core-s" x="746" y="242">to call; changes to</text>
+  <text class="on-core-s" x="746" y="258">scripts, uBlock and</text>
+  <text class="on-core-s" x="746" y="274">tabs wait for your</text>
+  <text class="on-core-s" x="746" y="290">OK in the panel.</text>
+
+  <!-- outside -->
+  <rect class="box" x="972" y="222" width="96" height="56" rx="9" />
+  <text class="t" x="986" y="246">Anthropic</text>
+  <text class="s" x="986" y="264">the model</text>
+
+  <!-- browser <-> local -->
+  <path class="a" d="M358 124 H482" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text class="l" x="420" y="116">WebSocket</text>
+
+  <path class="a" d="M358 208 H482" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text class="l" x="420" y="226">WebSocket</text>
+
+  <path class="a a-opt" d="M358 292 H482" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text class="l" x="420" y="284">WebSocket</text>
+
+  <path class="a a-opt" d="M358 376 H482" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text class="l" x="420" y="368">Marionette</text>
+
+  <!-- add-on <-> chat server: Explain and comment pins -->
+  <path class="a" d="M357 186 L483 146" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text class="l" x="420" y="158" transform="rotate(-17.6 420 158)">Explain, pins</text>
+
+  <!-- pages <-> add-on -->
+  <path class="a" d="M180 208 H210" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+
+  <!-- local servers <-> Claude Code -->
+  <path class="a" d="M680 124 H726" marker-end="url(#arrow)" />
+  <text class="l" x="703" y="116">starts</text>
+  <path class="a" d="M680 208 H726" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text class="l" x="703" y="200">MCP</text>
+  <path class="a a-opt" d="M680 292 H726" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text class="l" x="703" y="284">MCP</text>
+  <path class="a a-opt" d="M680 376 H726" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text class="l" x="703" y="368">MCP</text>
+
+  <!-- Claude Code <-> Anthropic -->
+  <path class="a" d="M878 250 H968" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text class="l" x="923" y="242">HTTPS</text>
+
+  <text class="foot" x="28" y="462">Only Claude Code talks to the outside; every other link stays on your machine. Dashed parts are optional.</text>
+  <text class="foot" x="28" y="482">The add-on connects out to the local servers, which are built to accept only the add-on and the panel.</text>
+</svg>
