@@ -929,10 +929,14 @@ export class Conversation {
         const list = msg.slash_commands.filter((name) => typeof name === 'string' && /^[\w:-]+$/.test(name) && !terminal.has(name) && !HIDDEN_COMMANDS.has(name) && !name.startsWith('__')).slice(0, 200);
         if (list.join() !== commands.join()) {
           commands = list;
-          for (const fn of this.subscribers) fn({ type: 'commands', list });
           try {
             writeFileSync(path.join(path.dirname(this.settingsFile), 'commands.json'), JSON.stringify(list));
           } catch {}
+          for (const fn of this.subscribers) {
+            try {
+              fn({ type: 'commands', list });
+            } catch {}
+          }
         }
       }
       // Remember what "Default" turns out to be, so the panel can name it.

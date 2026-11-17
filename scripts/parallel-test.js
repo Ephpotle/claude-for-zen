@@ -211,6 +211,7 @@ try {
   await b.tell({ type: 'settings', scripts: false });
 
   // Slash commands: the list comes from Claude Code, and a command's answer shows in the chat.
+  check('the panel that started the conversation is told the slash commands', Array.isArray(a.commands) && a.commands.includes('context'), a.commands);
   check('the panel is told which slash commands exist', Array.isArray(b.commands) && b.commands.includes('context') && !b.commands.includes('clear') && !b.commands.includes('model'), b.commands);
   await c.tell({ type: 'reset' });
   await c.say('/context');

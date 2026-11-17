@@ -112,7 +112,8 @@ function watchForQuestions(seat) {
   seat.subscribe((event) => {
     // The list of slash commands is learned by whichever conversation starts first; every panel wants it.
     if (event.type === 'commands') {
-      for (const other of seats) if (other !== seat) for (const fn of other.subscribers) fn(event);
+      // Pass it on once. The copy is marked, or each seat would pass it back and forth for ever.
+      if (!event.relayed) for (const other of seats) if (other !== seat) for (const fn of other.subscribers) fn({ ...event, relayed: true });
       return;
     }
     const asked = event.type === 'item' && event.item.type === 'ask';
