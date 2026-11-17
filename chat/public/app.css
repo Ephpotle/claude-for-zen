@@ -98,15 +98,6 @@ header button[aria-expanded='true'] {
   color: var(--danger);
 }
 
-/* The access button carries the current state when Claude can reach the computer. */
-#settings-toggle.computer {
-  color: var(--accent);
-  font-weight: 600;
-}
-#settings-toggle.full {
-  color: var(--danger);
-}
-
 #history {
   flex: none;
   max-height: 55vh;
@@ -176,97 +167,102 @@ header button[aria-expanded='true'] {
   color: var(--soft);
 }
 
+/* Settings: a compact panel. One three-way switch for access, toggles for the extras,
+   and one short line of explanation each; the full wording is in the tooltips. */
 #settings {
   flex: none;
-  padding: 12px 14px 14px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 4px 14px 10px;
   border-bottom: 1px solid var(--line);
   background: var(--surface);
   font-size: 12.5px;
   line-height: 1.4;
 }
-#settings fieldset {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  display: grid;
-  gap: 9px;
+#settings section {
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--line);
 }
-#settings legend {
-  padding: 0;
-  margin-bottom: 9px;
+#settings h2 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 0 7px;
+  font-size: 12px;
   font-weight: 600;
+  color: var(--soft);
 }
-#spaces-row {
-  margin-top: 12px;
-  padding-top: 11px;
-  border-top: 1px solid var(--line);
-}
-#settings input[type='checkbox'] {
-  margin: 2px 0 0;
-  accent-color: var(--accent);
-}
-#settings fieldset label,
-#scripts-row,
-#script-updates-row,
-#spaces-row {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 8px;
-  align-items: start;
+#settings .aside {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 400;
   cursor: pointer;
-  color: var(--soft);
 }
-#settings fieldset b,
-#scripts-row b,
-#script-updates-row b,
-#spaces-row b {
-  display: block;
-  color: var(--ink);
-  font-weight: 500;
-}
-#settings input[type='radio'] {
-  margin: 2px 0 0;
+#settings .aside input {
+  margin: 0;
   accent-color: var(--accent);
 }
-#scripts-row {
-  margin-top: 10px;
-}
-#access-all-row {
-  margin: 2px 0 0 21px;
-}
-#script-updates-row {
-  margin: 8px 0 0 21px;
-}
-#script-updates-row[hidden] {
-  display: none;
-}
-#model-row {
+
+/* Browser only / Ask first / No asking */
+.segments {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-top: 12px;
-  padding-top: 11px;
-  border-top: 1px solid var(--line);
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--ground);
 }
-#model-row label {
-  display: grid;
-  gap: 4px;
+.segments label {
+  position: relative;
+}
+.segments input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.segments span {
+  display: block;
+  padding: 5px 4px;
+  border-radius: 7px;
+  text-align: center;
+  font-weight: 500;
+  color: var(--soft);
+  white-space: nowrap;
+}
+.segments input:checked + span {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.segments input[value='ask']:checked + span {
+  color: var(--accent);
+}
+.segments input[value='full']:checked + span {
+  color: var(--danger);
+}
+.segments input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+#access-note {
+  margin: 7px 1px 0;
   color: var(--soft);
 }
-#model-row select {
-  font: inherit;
-  color: var(--ink);
-  background: var(--ground);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 4px 6px;
-  min-width: 0;
+#access-note.warn {
+  color: var(--danger);
 }
 #folder-row {
   display: grid;
   gap: 4px;
-  margin-top: 12px;
+  margin-top: 9px;
   color: var(--soft);
+}
+#folder-row[hidden] {
+  display: none;
 }
 #folder {
   font: 12px/1.4 ui-monospace, 'Cascadia Mono', Consolas, monospace;
@@ -277,9 +273,130 @@ header button[aria-expanded='true'] {
   padding: 5px 8px;
   min-width: 0;
 }
+
+/* Extras: a switch, a name, one line */
+.switch {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 9px;
+  align-items: start;
+  padding: 4px 0;
+  color: var(--soft);
+  cursor: pointer;
+}
+.switch.sub {
+  margin-left: 37px;
+}
+.switch[hidden] {
+  display: none;
+}
+.switch b {
+  display: block;
+  font-weight: 500;
+  color: var(--ink);
+}
+.switch input {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 28px;
+  height: 16px;
+  margin: 2px 0 0;
+  border-radius: 999px;
+  background: var(--line);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.switch input::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+.switch input:checked {
+  background: var(--accent);
+}
+.switch input:checked::after {
+  transform: translateX(12px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .switch input,
+  .switch input::after {
+    transition: none;
+  }
+}
+
+/* Model and effort, side by side */
+#settings .pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+#settings .pair label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--soft);
+}
+#settings select {
+  font: inherit;
+  font-weight: 400;
+  color: var(--ink);
+  background: var(--ground);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px;
+  min-width: 0;
+}
 #settings-problem {
   margin: 8px 0 0;
   color: var(--danger);
+}
+
+/* Look: four quiet swatches */
+#looks {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin: 9px 0 0;
+  color: var(--soft);
+  font-size: 12px;
+}
+#looks span {
+  margin-right: auto;
+  font-weight: 600;
+}
+#looks button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: none;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font: inherit;
+  color: var(--soft);
+  cursor: pointer;
+}
+#looks i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--dot);
+}
+#looks button:hover {
+  color: var(--ink);
+}
+#looks button[aria-pressed='true'] {
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 /* A request for your permission */
@@ -567,31 +684,6 @@ figure iframe {
   background: none;
   color: var(--ink);
   box-shadow: inset 0 0 0 1px var(--line);
-}
-
-/* The look chooser: one quiet line at the foot of the settings. */
-#looks {
-  margin: 14px 0 0;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-  color: var(--soft);
-  font-size: 12px;
-}
-#looks button {
-  border: 0;
-  background: none;
-  padding: 1px 5px;
-  border-radius: 4px;
-  font: inherit;
-  color: var(--soft);
-  cursor: pointer;
-}
-#looks button:hover {
-  color: var(--ink);
-}
-#looks button[aria-pressed='true'] {
-  color: var(--accent);
-  font-weight: 600;
 }
 
 /* ===== Looks =====

@@ -185,7 +185,18 @@ const settingsForm = document.getElementById('settings');
 const settingsToggle = document.getElementById('settings-toggle');
 const folder = document.getElementById('folder');
 const problem = document.getElementById('settings-problem');
-const ACCESS_LABEL = { browser: 'Access', ask: 'Computer access: asks first', full: 'Computer access: no asking' };
+const ACCESS_LABEL = { browser: 'Access', ask: 'Access: asks first', full: 'Access: no asking' };
+const ACCESS_NOTE = {
+  browser: 'Pages and tabs in Zen. Nothing on your computer.',
+  ask: 'Files and commands too. Each command or file change waits for your OK.',
+  full: 'Runs commands and changes files straight away. A page that tricks Claude could then reach your files.',
+};
+function showAccessNote(access) {
+  const note = document.getElementById('access-note');
+  note.textContent = ACCESS_NOTE[access] || '';
+  note.className = access === 'full' ? 'warn' : '';
+  document.getElementById('folder-row').hidden = access === 'browser';
+}
 
 /** "claude-fable-5-2" reads as "Fable 5.2". */
 function modelName(id) {
@@ -210,7 +221,7 @@ function showSettings(settings, trouble) {
   document.querySelector('#model option[value=""]').textContent = settings.defaultModel ? `Default (${modelName(settings.defaultModel)})` : 'Default';
   document.getElementById('effort').value = settings.effort || '';
   if (document.activeElement !== folder || !trouble) folder.value = settings.folder || '';
-  document.getElementById('folder-row').hidden = settings.access === 'browser';
+  showAccessNote(settings.access);
   settingsToggle.textContent = ACCESS_LABEL[settings.access];
   settingsToggle.className = settings.access === 'browser' ? '' : settings.access === 'full' ? 'computer full' : 'computer';
   problem.hidden = !trouble;
@@ -226,7 +237,10 @@ settingsToggle.addEventListener('click', () => {
   settingsForm.hidden = !settingsForm.hidden;
   settingsToggle.setAttribute('aria-expanded', String(!settingsForm.hidden));
 });
-settingsForm.addEventListener('change', saveSettings);
+settingsForm.addEventListener('change', () => {
+  showAccessNote(settingsForm.elements.access.value);
+  saveSettings();
+});
 // The look: applied at once here, saved so that every window follows.
 document.getElementById('looks').addEventListener('click', (event) => {
   if (event.target.tagName !== 'BUTTON') return;

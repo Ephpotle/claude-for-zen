@@ -29,18 +29,39 @@
     </section>
 
     <form id="settings" hidden>
-      <fieldset>
-        <legend>What Claude can use in this conversation</legend>
-        <label><input type="radio" name="access" value="browser" /> <span><b>Browser only</b> Pages and tabs in Zen. Nothing on your computer.</span></label>
-        <label><input type="radio" name="access" value="ask" /> <span><b>Browser and computer, asking first</b> Files and commands too. Commands and file changes wait for your OK here.</span></label>
-        <label><input type="radio" name="access" value="full" /> <span><b>Browser and computer, without asking</b> Runs commands and changes files straight away. A web page that tricks Claude could then reach your files.</span></label>
-        <label id="access-all-row"><input id="access-all" type="checkbox" /> <span><b>Use this in every conversation</b> Otherwise the choice above is for this conversation only, and a new chat starts with the browser only.</span></label>
-      </fieldset>
-      <label id="spaces-row"><input id="spaces" type="checkbox" /> <span><b>Zen itself: Spaces, tabs and uBlock</b> List, create and reorganise Spaces, folders and tabs, and tune uBlock Origin for the site you are on. Looking is free; every change waits for your OK here. Needs Zen started with the "Zen (Claude control)" shortcut.</span></label>
-      <label id="scripts-row"><input id="scripts" type="checkbox" /> <span><b>Violentmonkey userscripts</b> Make a change to a page permanent by saving it as a userscript, and manage the ones you have. Saving, switching and removing always wait for your OK here. Needs Violentmonkey 2.50 or newer.</span></label>
-      <label id="script-updates-row"><input id="script-updates" type="checkbox" /> <span><b>Update saved scripts without asking</b> Once you have allowed a script, Claude can change that script's code straight away, as long as its header (where it runs, what it may use, where it updates from) stays the same. New scripts and any header change still ask.</span></label>
-      <div id="model-row">
-        <label>Model
+      <section>
+        <h2>Access <label class="aside" title="Otherwise the choice is for this conversation only, and a new chat starts with the browser only."><input id="access-all" type="checkbox" /> in every conversation</label></h2>
+        <div class="segments" role="radiogroup" aria-label="What Claude can use in this conversation">
+          <label><input type="radio" name="access" value="browser" /><span>Browser only</span></label>
+          <label><input type="radio" name="access" value="ask" /><span>Ask first</span></label>
+          <label><input type="radio" name="access" value="full" /><span>No asking</span></label>
+        </div>
+        <p id="access-note"></p>
+        <label id="folder-row">
+          Working folder
+          <input id="folder" type="text" placeholder="e.g. C:\Users\you\Projects" spellcheck="false" autocomplete="off" />
+        </label>
+      </section>
+
+      <section>
+        <h2>Extras</h2>
+        <label class="switch" title="List, create and reorganise Spaces, folders and tabs, arrange split views, and tune uBlock Origin for the site you are on. Looking is free; every change waits for your OK. Needs Zen started with the “Zen (Claude control)” shortcut.">
+          <input id="spaces" type="checkbox" />
+          <span><b>Zen itself</b> Spaces, tabs, split view, uBlock. Needs the control shortcut.</span>
+        </label>
+        <label class="switch" title="Make a change to a page permanent by saving it as a userscript, and manage the ones you have. Saving, switching and removing wait for your OK. Needs Violentmonkey 2.50 or newer.">
+          <input id="scripts" type="checkbox" />
+          <span><b>Userscripts</b> Keep page changes with Violentmonkey.</span>
+        </label>
+        <label class="switch sub" id="script-updates-row" title="Once you have allowed a script, Claude can change that script’s code straight away, as long as its header (where it runs, what it may use, where it updates from) stays the same. New scripts and any header change still ask.">
+          <input id="script-updates" type="checkbox" />
+          <span><b>Update without asking</b> Scripts you already allowed, same header.</span>
+        </label>
+      </section>
+
+      <section class="pair">
+        <label>
+          Model
           <select id="model">
             <option value="">Default</option>
             <option value="fable">Fable</option>
@@ -49,7 +70,8 @@
             <option value="haiku">Haiku</option>
           </select>
         </label>
-        <label>Effort
+        <label>
+          Effort
           <select id="effort">
             <option value="">Default</option>
             <option value="low">Low</option>
@@ -59,13 +81,16 @@
             <option value="max">Max</option>
           </select>
         </label>
-      </div>
-      <label id="folder-row">
-        Working folder for files
-        <input id="folder" type="text" placeholder="e.g. C:\Users\you\Projects" spellcheck="false" autocomplete="off" />
-      </label>
+      </section>
+
       <p id="settings-problem" hidden></p>
-      <p id="looks">Look: <button type="button" data-theme="">Sage</button> <button type="button" data-theme="iris">Iris</button> <button type="button" data-theme="reader">Reader</button> <button type="button" data-theme="ledger">Ledger</button></p>
+      <p id="looks">
+        <span>Look</span>
+        <button type="button" data-theme=""><i style="--dot: #2f6b4f"></i>Sage</button>
+        <button type="button" data-theme="iris"><i style="--dot: #5b4bd6"></i>Iris</button>
+        <button type="button" data-theme="reader"><i style="--dot: #8a6d3b"></i>Reader</button>
+        <button type="button" data-theme="ledger"><i style="--dot: #a8530a"></i>Ledger</button>
+      </p>
     </form>
 
     <main id="log" aria-live="polite">
