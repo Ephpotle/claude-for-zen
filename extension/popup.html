@@ -27,14 +27,23 @@
         gap: 8px;
         font-weight: 600;
       }
-      #dot {
+      #status2 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+        opacity: 0.85;
+      }
+      #dot,
+      #dot2 {
         width: 9px;
         height: 9px;
         border-radius: 50%;
         background: #9a9892;
         flex: none;
       }
-      #dot.on {
+      #dot.on,
+      #dot2.on {
         background: #d97757;
       }
       p {
@@ -102,6 +111,7 @@
     <h1>Claude for Zen</h1>
     <div id="status"><span id="dot"></span><span id="label">Checking…</span></div>
     <p id="hint"></p>
+    <div id="status2"><span id="dot2"></span><span id="sessions"></span></div>
     <hr />
     <button id="sidebar" type="button">Show or hide the chat sidebar <kbd>Ctrl+Alt+C</kbd></button>
     <button id="comment" type="button">Comment on this page <kbd>Alt+Shift+C</kbd></button>

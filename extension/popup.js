@@ -1,12 +1,20 @@
-browser.runtime.sendMessage({ type: 'status' }).then(({ sessions }) => {
-  document.getElementById('dot').classList.toggle('on', sessions > 0);
-  document.getElementById('label').textContent = sessions
-    ? `Connected to ${sessions} Claude Code session${sessions > 1 ? 's' : ''}`
-    : 'Not connected';
-  document.getElementById('hint').textContent = sessions
-    ? 'Claude Code can see and control tabs in this browser.'
-    : 'Connects by itself within a few seconds of a Claude Code session or the chat panel starting.';
-});
+// Two separate things are shown. The chat panel has its own server, which runs all the
+// time. A Claude Code session (one in a terminal, or one the panel started for a
+// conversation) attaches to the browser only while it exists, so "none" is normal.
+const show = ({ sessions, panel }) => {
+  document.getElementById('dot').classList.toggle('on', panel);
+  document.getElementById('label').textContent = panel ? 'Chat panel ready' : 'Chat panel server is not running';
+  document.getElementById('hint').textContent = panel
+    ? 'Open the sidebar and type; no terminal is needed.'
+    : 'It starts when you log in to Windows if you ran scripts/autostart.ps1 once; otherwise run "npm run chat" in the project folder.';
+  document.getElementById('dot2').classList.toggle('on', sessions > 0);
+  document.getElementById('sessions').textContent = sessions
+    ? `${sessions} Claude session${sessions > 1 ? 's' : ''} using this browser`
+    : 'No Claude session using this browser right now';
+};
+const refresh = () => browser.runtime.sendMessage({ type: 'status' }).then(show);
+refresh();
+setTimeout(refresh, 1500); // the first look may have set off a reconnect
 
 // The add-on's own chat sidebar. This has to run straight from the click:
 // the browser only lets a sidebar be opened in answer to a user's action.

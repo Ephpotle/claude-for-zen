@@ -525,7 +525,10 @@ const handlers = {
 // ------------------------------------------------- console + network capture
 
 browser.runtime.onMessage.addListener((msg, sender) => {
-  if (msg.type === 'status') return Promise.resolve({ sessions: sessionCount() });
+  if (msg.type === 'status') {
+    keepControl();
+    return Promise.resolve({ sessions: sessionCount(), panel: !!control && control.readyState === WebSocket.OPEN });
+  }
   if (msg.type === 'chat_port') return chatPort();
   if (msg.type === 'comment_mode') {
     return browser.tabs.query({ active: true, lastFocusedWindow: true }).then(([tab]) => tab && userAction(tab.id, 'comment_mode'));
